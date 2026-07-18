@@ -51,6 +51,22 @@ export type AuthorizedCommitmentAction = (input: Readonly<{
   telegramChatId: string;
 }>) => Promise<typeof commitments.$inferSelect>;
 
+export type CommitmentActionAuthorizationInput = Readonly<{
+  actor: Readonly<{ firstName: string; telegramUserId: number }>;
+  commitmentId: string;
+  telegramChatId: string;
+}>;
+
+export type CommitmentActionScope = Readonly<{
+  chatId: string;
+  commitment: typeof commitments.$inferSelect;
+  workspaceId: string;
+}>;
+
+export type AuthorizeCommitmentAction = (
+  input: CommitmentActionAuthorizationInput,
+) => Promise<CommitmentActionScope>;
+
 export function createUpdateCommitment<TQueryResult extends PgQueryResultHKT>(
   database: RepositoryDatabase<TQueryResult>,
 ): UpdateCommitment {
@@ -102,7 +118,23 @@ export function createAuthorizedCommitmentAction<TQueryResult extends PgQueryRes
   isCurrentChatAdmin: CurrentChatAdminChecker,
 ): AuthorizedCommitmentAction {
   const updateCommitment = createUpdateCommitment(database);
+  const authorize = createAuthorizeCommitmentAction(database, isCurrentChatAdmin);
 
+  return async (input) => {
+    const scopedCommitment = await authorize(input);
+    return updateCommitment({
+      chatId: scopedCommitment.chatId,
+      commitmentId: scopedCommitment.commitment.id,
+      status: actionStatuses[input.action],
+      workspaceId: scopedCommitment.workspaceId,
+    });
+  };
+}
+
+export function createAuthorizeCommitmentAction<TQueryResult extends PgQueryResultHKT>(
+  database: RepositoryDatabase<TQueryResult>,
+  isCurrentChatAdmin: CurrentChatAdminChecker,
+): AuthorizeCommitmentAction {
   return async (input) => {
     const telegramChatId = Number(input.telegramChatId);
     if (!Number.isSafeInteger(telegramChatId)) {
@@ -143,11 +175,10 @@ export function createAuthorizedCommitmentAction<TQueryResult extends PgQueryRes
         throw new CommitmentUpdateError('UNAUTHORIZED');
       }
     }
-    return updateCommitment({
+    return {
       chatId: scopedCommitment.chatId,
-      commitmentId: scopedCommitment.commitment.id,
-      status: actionStatuses[input.action],
+      commitment: scopedCommitment.commitment,
       workspaceId: scopedCommitment.workspaceId,
-    });
+    };
   };
 }

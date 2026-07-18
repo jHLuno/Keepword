@@ -5,6 +5,9 @@ import { createPgliteTestDatabase, type PgliteTestDatabase } from '../helpers/pg
 import { createConnectChat } from '../../src/services/connect-chat.js';
 import { chatMemberships, commitments } from '../../src/db/schema.js';
 import { and, eq } from 'drizzle-orm';
+import { createCallbackTokenService } from '../../src/services/callback-tokens.js';
+import { createSignedCallback } from '../../src/telegram/callback-data.js';
+import { createCommitmentActionCallbackHandler } from '../../src/telegram/handlers/callback.js';
 
 let database: PgliteTestDatabase;
 let telegramChatId = 80_000;
@@ -114,5 +117,35 @@ describe('commitment status actions', () => {
         telegramChatId: deniedCommitment.telegramChatId,
       }),
     ).rejects.toMatchObject({ code: 'UNAUTHORIZED' });
+  });
+
+  test('does not consume a lifecycle callback token when a participant is denied', async () => {
+    const fixture = await createOpenCommitment();
+    const nonce = (await createCallbackTokenService(database.db).issueCommitmentCallbacks({
+      actions: ['complete'], commitmentId: fixture.commitmentId,
+    })).complete;
+    if (!nonce) throw new Error('Expected lifecycle nonce');
+    const callbackData = createSignedCallback('complete', nonce, 'callback-test-secret');
+    const handler = createCommitmentActionCallbackHandler({
+      callbackSigningSecret: 'callback-test-secret',
+      database: database.db,
+      isCurrentChatAdmin: () => Promise.resolve(false),
+    });
+    const callbackAs = async (telegramUserId: number): Promise<string[]> => {
+      const answers: string[] = [];
+      await handler({
+        payload: { callback_query: {
+          data: callbackData, from: { first_name: 'User', id: telegramUserId }, id: `lifecycle-${telegramUserId}`,
+          message: { chat: { id: Number(fixture.telegramChatId), type: 'supergroup' }, message_id: 1 },
+        } },
+        updateId: telegramUserId,
+      }, { answerCallbackQuery: ({ text }) => { answers.push(text); return Promise.resolve(); } });
+      return answers;
+    };
+
+    expect(await callbackAs(8203)).toContain('У вас нет прав на это действие.');
+    expect(await callbackAs(8201)).toContain('Статус задачи обновлён.');
+    await expect(createUpdateCommitment(database.db)({ ...fixture, status: 'open' }))
+      .rejects.toMatchObject({ code: 'INVALID_STATUS_TRANSITION' });
   });
 });

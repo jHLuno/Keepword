@@ -213,6 +213,17 @@ describe('suggestion callback authorization', () => {
     expect(await getSuggestionStatus(fixture)).toBe('pending');
   });
 
+  test('does not consume a callback token when an ordinary participant is denied', async () => {
+    const fixture = await createFixture();
+
+    const denied = await callbackAs(fixture, 8102, fixture.callbackData);
+    const confirmed = await callbackAs(fixture, 8101, fixture.callbackData);
+
+    expect(denied.answers).toContain('У вас нет прав на это действие.');
+    expect(confirmed.answers).toContain('Договорённость сохранена.');
+    expect(await getSuggestionStatus(fixture)).toBe('confirmed');
+  });
+
   test('rejects malformed and replayed callbacks without creating another commitment', async () => {
     const fixture = await createFixture();
 
@@ -228,7 +239,7 @@ describe('suggestion callback authorization', () => {
     expect(malformed.answers).toContain('Действие недоступно.');
     expect(forged.answers).toContain('Действие недоступно.');
     expect(replay.answers).toContain('Действие недоступно.');
-    expect(await countCommitments()).toBe(3);
+    expect(await countCommitments()).toBe(4);
   });
 
   test('converts a pending suggestion exactly once when confirm callbacks race', async () => {

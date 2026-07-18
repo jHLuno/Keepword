@@ -17,7 +17,11 @@ import {
 } from '../../services/confirm-suggestion.js';
 import { createCallbackTokenService, CallbackTokenError } from '../../services/callback-tokens.js';
 import { createSuggestionEditSessionService } from '../../services/suggestion-edit-sessions.js';
-import { createAuthorizedCommitmentAction, CommitmentUpdateError } from '../../services/update-commitment.js';
+import {
+  createAuthorizedCommitmentAction,
+  createAuthorizeCommitmentAction,
+  CommitmentUpdateError,
+} from '../../services/update-commitment.js';
 import { createCommitmentRescheduleService, CommitmentRescheduleError } from '../../services/commitment-reschedule-sessions.js';
 import { CallbackDataError, parseSignedCallbackData } from '../callback-data.js';
 import type { TelegramUpdate } from '../bot.js';
@@ -69,10 +73,18 @@ export function createCommitmentActionCallbackHandler<TQueryResult extends PgQue
     const telegramUserId = callback.from.id;
     try {
       const signedCallback = parseSignedCallbackData(callback.data, input.callbackSigningSecret);
-      const resolvedCallback = await createCallbackTokenService(input.database).claim(signedCallback);
+      const callbackTokens = createCallbackTokenService(input.database);
+      const resolvedCallback = await callbackTokens.resolve(signedCallback);
       const currentAdminChecker = input.isCurrentChatAdmin ?? messenger.isCurrentChatAdmin ?? (() => Promise.resolve(false));
       if (resolvedCallback.kind === 'commitment') {
+        const commitmentAuthorization = createAuthorizeCommitmentAction(input.database, currentAdminChecker);
         if (signedCallback.action === 'reschedule') {
+          await commitmentAuthorization({
+            actor: { firstName: callback.from.first_name, telegramUserId },
+            commitmentId: resolvedCallback.commitmentId,
+            telegramChatId,
+          });
+          await callbackTokens.claim(signedCallback);
           await createCommitmentRescheduleService(input.database, currentAdminChecker).begin({
             actorTelegramUserId: telegramUserId,
             commitmentId: resolvedCallback.commitmentId,
@@ -92,6 +104,12 @@ export function createCommitmentActionCallbackHandler<TQueryResult extends PgQue
         ) {
           throw new CallbackDataError();
         }
+        await commitmentAuthorization({
+          actor: { firstName: callback.from.first_name, telegramUserId },
+          commitmentId: resolvedCallback.commitmentId,
+          telegramChatId,
+        });
+        await callbackTokens.claim(signedCallback);
         await createAuthorizedCommitmentAction(input.database, currentAdminChecker)({
           action: signedCallback.action,
           actor: { firstName: callback.from.first_name, telegramUserId },
@@ -133,6 +151,7 @@ export function createCommitmentActionCallbackHandler<TQueryResult extends PgQue
         if (!actor) {
           throw new Error('Authorized edit actor could not be scoped');
         }
+        await callbackTokens.claim(signedCallback);
         await createSuggestionEditSessionService(input.database).begin({
           actorUserId: actor.userId,
           suggestionId: resolvedCallback.suggestionId,
@@ -174,6 +193,7 @@ export function createCommitmentActionCallbackHandler<TQueryResult extends PgQue
       if (!scopedActor) {
         throw new Error('Authorized callback actor could not be scoped');
       }
+      await callbackTokens.claim(signedCallback);
 
       if (signedCallback.action === 'confirm') {
         await createConfirmSuggestion(input.database)({

@@ -34,6 +34,10 @@ export type CallbackTokenService = Readonly<{
     | Readonly<{ kind: 'suggestion'; suggestionId: string }>
     | Readonly<{ commitmentId: string; kind: 'commitment' }>
   >;
+  resolve: (input: Readonly<{ action: CallbackAction; nonce: string }>) => Promise<
+    | Readonly<{ kind: 'suggestion'; suggestionId: string }>
+    | Readonly<{ commitmentId: string; kind: 'commitment' }>
+  >;
 }>;
 
 function hashNonce(nonce: string): string {
@@ -89,6 +93,32 @@ export function createCallbackTokenService<TQueryResult extends PgQueryResultHKT
           ),
         )
         .returning();
+      const token = rows[0];
+      if (!token) {
+        throw new CallbackTokenError();
+      }
+      if (token.suggestionId) {
+        return { kind: 'suggestion', suggestionId: token.suggestionId };
+      }
+      if (token.commitmentId) {
+        return { commitmentId: token.commitmentId, kind: 'commitment' };
+      }
+      throw new CallbackTokenError();
+    },
+
+    async resolve(input) {
+      const rows = await database
+        .select()
+        .from(callbackTokens)
+        .where(
+          and(
+            eq(callbackTokens.action, input.action),
+            eq(callbackTokens.nonceHash, hashNonce(input.nonce)),
+            gt(callbackTokens.expiresAt, new Date()),
+            isNull(callbackTokens.consumedAt),
+          ),
+        )
+        .limit(1);
       const token = rows[0];
       if (!token) {
         throw new CallbackTokenError();
