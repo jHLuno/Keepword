@@ -6,14 +6,14 @@
 - Documented the implemented Trust Memory release: immutable scoped suggestion events, chat-scoped calibration, reliability, and actionable private `/check`.
 - Added a release checklist that requires migrations `0009`–`0011` on staging before production and verifies callback ownership, current-admin-only digests, and deletion cascade.
 - Clarified that `check_page` navigation callbacks are actor-bound, while lifecycle callbacks are authorized only for the assignee or current administrator of the original source chat.
-- Passed local frozen install, tracked-file ESLint, typecheck, full test suite (28 files, 147 tests, including local migration application), build, and production dependency audit.
+- Passed local frozen install, repository-wide ESLint, typecheck, full test suite (28 files, 148 tests, including local migration application), build, and production dependency audit.
 
 ### Not done
 - No staging `pnpm db:migrate`, Railway deployment, or live Telegram smoke test was run from this workspace.
 
 ### Risks / blockers
 - A Railway operator with a separate staging database and bot is required to complete the checklist. Do not use the production database as the first migration target.
-- `pnpm lint` across the whole directory is blocked only by the untracked user-owned `landing/dist/assets/index-CFentx7P.js`; tracked TypeScript lint passes. `landing/` was not modified.
+- `landing/` remains untracked and was not modified; nested generated `dist/` artifacts are excluded from ESLint without excluding source files.
 
 ### Next recommended step
 - In Railway staging: back up the staging database, apply `pnpm db:migrate` once, deploy web and worker, and complete every smoke check in `docs/release-checklist.md` before production.

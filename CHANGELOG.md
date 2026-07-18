@@ -13,7 +13,7 @@
 - `pnpm test` — passed: 28 files, 147 tests. The integration suite applies the complete local Drizzle migration folder to PGlite.
 - `pnpm build` — passed.
 - `pnpm audit --prod --audit-level=moderate` — passed: no known vulnerabilities.
-- Repository-wide `pnpm lint` fails only because pre-existing, untracked `landing/dist/assets/index-CFentx7P.js` is outside the TypeScript project. `git ls-files -z -- '*.ts' '*.mts' '*.cts' | xargs -0 pnpm exec eslint` — passed for all tracked TypeScript files.
+- `pnpm lint` — passed after excluding nested generated `dist/` artifacts without excluding source files.
 
 ### Notes
 - No discoverable staging database configuration or Railway authority was available locally, so `pnpm db:migrate` was not run against any external database and Telegram/Railway smoke tests were not claimed as complete. The required operator steps are in `docs/release-checklist.md`.
