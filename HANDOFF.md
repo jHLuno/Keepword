@@ -5,6 +5,7 @@
 ### Done
 - Documented the implemented Trust Memory release: immutable scoped suggestion events, chat-scoped calibration, reliability, and actionable private `/check`.
 - Added a release checklist that requires migrations `0009`–`0011` on staging before production and verifies callback ownership, current-admin-only digests, and deletion cascade.
+- Clarified that `check_page` navigation callbacks are actor-bound, while lifecycle callbacks are authorized only for the assignee or current administrator of the original source chat.
 - Passed local frozen install, tracked-file ESLint, typecheck, full test suite (28 files, 147 tests, including local migration application), build, and production dependency audit.
 
 ### Not done

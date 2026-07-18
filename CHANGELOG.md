@@ -5,6 +5,7 @@
 ### Changed
 - Updated `PROJECT.md` to describe the implemented action-first private `/check`, immutable suggestion decision history, observation-only chat calibration, and scoped reliability metrics.
 - Expanded the Railway release checklist with the three migrations in this release, forward-only rollback guidance, and staging checks for callback ownership, current-admin isolation, and privacy deletion cascade.
+- Corrected the callback guarantee: only `check_page` navigation callbacks are actor-bound; lifecycle callbacks remain server-authorized for the commitment assignee or a current admin of its original source chat.
 
 ### Verified
 - `pnpm install --frozen-lockfile` — passed.
