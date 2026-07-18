@@ -1,6 +1,5 @@
 import type { PgQueryResultHKT } from 'drizzle-orm/pg-core';
 
-import { isPotentialCommitment } from '../ai/prefilter.js';
 import type { CommitmentExtractor } from '../ai/extractor.js';
 import type { CommitmentCandidate } from '../domain/extraction.js';
 import type { Logger } from '../observability/logger.js';
@@ -96,7 +95,7 @@ export function createAnalyzeGroupMessage<TQueryResult extends PgQueryResultHKT>
     const activeMessenger = input.messenger ?? messenger;
     const telegramChatId = Number(input.telegramChatId);
     const telegramMessageId = Number(input.telegramMessageId);
-    if (!Number.isSafeInteger(telegramChatId) || !Number.isSafeInteger(telegramMessageId) || !isPotentialCommitment(input.text)) {
+    if (!Number.isSafeInteger(telegramChatId) || !Number.isSafeInteger(telegramMessageId)) {
       return 'skipped';
     }
 
