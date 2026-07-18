@@ -189,4 +189,38 @@ describe('commitment status actions', () => {
     const updated = (await database.db.select().from(commitments).where(eq(commitments.id, fixture.commitmentId)))[0];
     expect(updated).toMatchObject({ status: 'completed' });
   });
+
+  test('denies a private commitment callback to a participant and an administrator of another source chat', async () => {
+    const fixture = await createOpenCommitment();
+    const otherChat = await createConnectChat(database.db)({
+      adminTelegramUserId: '8204', telegramChatId: '80004', timezone: 'UTC', title: 'Other source chat',
+    });
+    const nonce = (await createCallbackTokenService(database.db).issueCommitmentCallbacks({
+      actions: ['complete'], commitmentId: fixture.commitmentId,
+    })).complete;
+    if (!nonce) throw new Error('Expected lifecycle nonce');
+    const callbackData = createSignedCallback('complete', nonce, 'callback-test-secret');
+    const handler = createCommitmentActionCallbackHandler({
+      callbackSigningSecret: 'callback-test-secret',
+      database: database.db,
+      isCurrentChatAdmin: ({ telegramChatId, telegramUserId }) => Promise.resolve(
+        telegramUserId === 8204 && telegramChatId === otherChat.telegramChatId,
+      ),
+    });
+    const callbackAs = async (telegramUserId: number): Promise<string[]> => {
+      const answers: string[] = [];
+      await handler({
+        payload: { callback_query: {
+          data: callbackData, from: { first_name: 'User', id: telegramUserId }, id: `private-denied-${telegramUserId}`,
+          message: { chat: { id: telegramUserId, type: 'private' }, message_id: 1 },
+        } },
+        updateId: telegramUserId,
+      }, { answerCallbackQuery: ({ text }) => { answers.push(text); return Promise.resolve(); } });
+      return answers;
+    };
+
+    expect(await callbackAs(8203)).toContain('У вас нет прав на это действие.');
+    expect(await callbackAs(8204)).toContain('У вас нет прав на это действие.');
+    expect(await callbackAs(8201)).toContain('Статус задачи обновлён.');
+  });
 });

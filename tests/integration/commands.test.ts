@@ -7,6 +7,7 @@ import { createOnboardingInvitationService } from '../../src/services/onboarding
 import { createOnboardingService } from '../../src/services/onboarding.js';
 import { createGroupUpdateHandler } from '../../src/telegram/handlers/group.js';
 import { createPrivateUpdateHandler } from '../../src/telegram/handlers/private.js';
+import { createCommitmentActionCallbackHandler } from '../../src/telegram/handlers/callback.js';
 import { createFakeTelegram } from '../helpers/fake-telegram.js';
 import { createPgliteTestDatabase, type PgliteTestDatabase } from '../helpers/pglite.js';
 
@@ -195,6 +196,125 @@ describe('Telegram commands', () => {
       'Сначала подключите уведомления через ссылку из нужной группы.',
       'Сначала подключите уведомления через ссылку из нужной группы.',
     ]);
+  });
+
+  test('paginates actionable private checks with source-chat labels and signed page controls', async () => {
+    const actorTelegramUserId = 9840;
+    const firstChat = await createConnectChat(database.db)({
+      adminTelegramUserId: String(actorTelegramUserId), telegramChatId: '-1009840', timezone: 'UTC', title: 'First source',
+    });
+    const secondChat = await createConnectChat(database.db)({
+      adminTelegramUserId: String(actorTelegramUserId), telegramChatId: '-1009841', timezone: 'UTC', title: 'Second source',
+    });
+    const actor = (await database.db.select().from(users).where(eq(users.telegramUserId, actorTelegramUserId)).limit(1))[0];
+    if (!actor) throw new Error('Expected actor');
+    await database.db.update(users).set({ privateChatStartedAt: new Date() }).where(eq(users.id, actor.id));
+    await database.db.update(chatMemberships).set({ notificationsConnectedAt: new Date() }).where(eq(chatMemberships.userId, actor.id));
+    await database.db.insert(commitments).values(Array.from({ length: 6 }, (_, index) => ({
+      assigneeUserId: actor.id,
+      chatId: index % 2 === 0 ? firstChat.chatId : secondChat.chatId,
+      dueDateText: `день ${index + 1}`,
+      status: 'open' as const,
+      title: `Task ${index + 1}`,
+      workspaceId: index % 2 === 0 ? firstChat.workspaceId : secondChat.workspaceId,
+    })));
+
+    const cards: Array<Readonly<{ replyMarkup?: { inline_keyboard: { callback_data: string; text: string }[][] }; text: string }>> = [];
+    const handler = createPrivateUpdateHandler({ callbackSigningSecret: 'check-test-secret', database: database.db });
+    await handler(privateUpdate(actorTelegramUserId, '/check'), {
+      sendPrivateMessage(input) {
+        cards.push(input);
+        return Promise.resolve();
+      },
+    });
+
+    const firstPage = cards[0];
+    if (!firstPage?.replyMarkup) throw new Error('Expected actionable first page');
+    expect(firstPage.text).toContain('[First source] Task 1 · день 1');
+    expect(firstPage.text).toContain('[Second source] Task 2 · день 2');
+    expect(firstPage.text).toContain('Task 5');
+    expect(firstPage.text).not.toContain('Task 6');
+    expect(firstPage.replyMarkup.inline_keyboard.flat().filter((button) => button.text === 'Готово')).toHaveLength(5);
+    const next = firstPage.replyMarkup.inline_keyboard.flat().find((button) => button.text === 'Вперёд ▶');
+    if (!next) throw new Error('Expected next-page callback');
+    expect(next.callback_data).toMatch(/^kw:check_page:[A-Za-z0-9_-]{16,32}:[A-Za-z0-9_-]{16}$/);
+
+    const edited: Array<Readonly<{ replyMarkup?: { inline_keyboard: { callback_data: string; text: string }[][] }; text: string }>> = [];
+    const callbackHandler = createCommitmentActionCallbackHandler({ callbackSigningSecret: 'check-test-secret', database: database.db });
+    await callbackHandler({
+      payload: { callback_query: {
+        data: next.callback_data,
+        from: { first_name: 'Actor', id: actorTelegramUserId },
+        id: 'check-next',
+        message: { chat: { id: actorTelegramUserId, type: 'private' }, message_id: 1 },
+      } },
+      updateId: 9840,
+    }, {
+      answerCallbackQuery: () => Promise.resolve(),
+      editPrivateCheckMessage(input) {
+        edited.push(input);
+        return Promise.resolve();
+      },
+    });
+
+    const secondPage = edited[0];
+    if (!secondPage?.replyMarkup) throw new Error('Expected actionable second page');
+    expect(secondPage?.text).toContain('Task 6');
+    expect(secondPage?.text).not.toContain('Task 1');
+    const previous = secondPage.replyMarkup.inline_keyboard.flat().find((button) => button.text === '◀ Назад');
+    if (!previous) throw new Error('Expected previous-page callback');
+    await callbackHandler({
+      payload: { callback_query: {
+        data: previous.callback_data,
+        from: { first_name: 'Actor', id: actorTelegramUserId },
+        id: 'check-previous',
+        message: { chat: { id: actorTelegramUserId, type: 'private' }, message_id: 1 },
+      } },
+      updateId: 9841,
+    }, {
+      answerCallbackQuery: () => Promise.resolve(),
+      editPrivateCheckMessage(input) {
+        edited.push(input);
+        return Promise.resolve();
+      },
+    });
+    expect(edited[1]?.text).toContain('Task 1');
+  });
+
+  test('allows the assignee to complete a commitment from their private check', async () => {
+    const actorTelegramUserId = 9850;
+    const chat = await createConnectChat(database.db)({
+      adminTelegramUserId: String(actorTelegramUserId), telegramChatId: '-1009850', timezone: 'UTC', title: 'Action source',
+    });
+    const actor = (await database.db.select().from(users).where(eq(users.telegramUserId, actorTelegramUserId)).limit(1))[0];
+    if (!actor) throw new Error('Expected actor');
+    await database.db.update(users).set({ privateChatStartedAt: new Date() }).where(eq(users.id, actor.id));
+    await database.db.update(chatMemberships).set({ notificationsConnectedAt: new Date() }).where(eq(chatMemberships.userId, actor.id));
+    const commitment = (await database.db.insert(commitments).values({
+      assigneeUserId: actor.id, chatId: chat.chatId, status: 'open', title: 'Complete from check', workspaceId: chat.workspaceId,
+    }).returning({ id: commitments.id }))[0];
+    if (!commitment) throw new Error('Expected commitment');
+
+    const cards: Array<Readonly<{ replyMarkup?: { inline_keyboard: { callback_data: string; text: string }[][] } }>> = [];
+    await createPrivateUpdateHandler({ callbackSigningSecret: 'check-test-secret', database: database.db })(privateUpdate(actorTelegramUserId, '/check'), {
+      sendPrivateMessage(input) {
+        cards.push(input);
+        return Promise.resolve();
+      },
+    });
+    const complete = cards[0]?.replyMarkup?.inline_keyboard.flat().find((button) => button.text === 'Готово');
+    if (!complete) throw new Error('Expected complete callback');
+    await createCommitmentActionCallbackHandler({ callbackSigningSecret: 'check-test-secret', database: database.db })({
+      payload: { callback_query: {
+        data: complete.callback_data,
+        from: { first_name: 'Actor', id: actorTelegramUserId },
+        id: 'complete-from-check',
+        message: { chat: { id: actorTelegramUserId, type: 'private' }, message_id: 1 },
+      } },
+      updateId: 9850,
+    }, { answerCallbackQuery: () => Promise.resolve() });
+
+    expect((await database.db.select().from(commitments).where(eq(commitments.id, commitment.id)))[0]).toMatchObject({ status: 'completed' });
   });
 
   test('analyzes only the replied source message for group /keep', async () => {

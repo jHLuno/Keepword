@@ -84,6 +84,7 @@ export function buildApp<TQueryResult extends PgQueryResultHKT>(
     logger,
   });
   const privateUpdateHandler = createPrivateUpdateHandler({
+    callbackSigningSecret: config.callbackSigningSecret,
     database: dependencies.database,
     logger,
     manualCapture: createManualCapture(dependencies.database, extractor, config.callbackSigningSecret, logger),

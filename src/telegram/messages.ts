@@ -24,6 +24,14 @@ type CommitmentAction = 'block' | 'cancel' | 'complete' | 'open' | 'reschedule';
 
 export type CommitmentCallbackNonces = Readonly<Record<CommitmentAction, string>>;
 
+export type PrivateCheckItem = Readonly<{
+  callbacks?: Readonly<Pick<CommitmentCallbackNonces, 'block' | 'complete' | 'reschedule'>>;
+  chatTitle: string;
+  dueDateText: string | null;
+  status: 'blocked' | 'open' | 'overdue';
+  title: string;
+}>;
+
 export type ReminderCard = Readonly<{
   dueDateText: string | null;
   status: 'open' | 'overdue';
@@ -126,6 +134,42 @@ export function renderCommitmentActions(
       [{ callback_data: createSignedCallback('reschedule', callbackNonces.reschedule, callbackSigningSecret), text: 'Перенести срок' }],
     ],
   };
+}
+
+export function renderPrivateCheck(input: Readonly<{
+  items: readonly PrivateCheckItem[];
+  nextPageCallback?: string | undefined;
+  previousPageCallback?: string | undefined;
+}>): Readonly<{ replyMarkup?: InlineKeyboardMarkup; text: string }> {
+  const sections: ReadonlyArray<Readonly<{ heading: string; status: PrivateCheckItem['status'] }>> = [
+    { heading: '🔴 Просрочены', status: 'overdue' },
+    { heading: '🟡 Открытые', status: 'open' },
+    { heading: '🟠 Есть блокер', status: 'blocked' },
+  ];
+  const renderedSections = sections.flatMap(({ heading, status }) => {
+    const tasks = input.items.filter((item) => item.status === status);
+    if (tasks.length === 0) {
+      return [];
+    }
+    return [`${heading}\n${tasks.map((task) => `— [${task.chatTitle}] ${task.title}${task.dueDateText ? ` · ${task.dueDateText}` : ''}`).join('\n')}`];
+  });
+  const text = `📋 Мои обязательства\n\n${renderedSections.length === 0 ? '— активных обязательств нет' : renderedSections.join('\n\n')}`;
+  if (input.items.length === 0) {
+    return { text };
+  }
+  const inlineKeyboard = input.items.flatMap((item) => item.callbacks ? [[
+    { callback_data: item.callbacks.complete, text: 'Готово' },
+    { callback_data: item.callbacks.block, text: 'Есть блокер' },
+    { callback_data: item.callbacks.reschedule, text: 'Перенести срок' },
+  ]] : []);
+  const navigation = [
+    ...(input.previousPageCallback ? [{ callback_data: input.previousPageCallback, text: '◀ Назад' }] : []),
+    ...(input.nextPageCallback ? [{ callback_data: input.nextPageCallback, text: 'Вперёд ▶' }] : []),
+  ];
+  if (navigation.length > 0) {
+    inlineKeyboard.push(navigation);
+  }
+  return inlineKeyboard.length > 0 ? { replyMarkup: { inline_keyboard: inlineKeyboard }, text } : { text };
 }
 
 export function renderReminderCard(

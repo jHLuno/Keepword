@@ -58,6 +58,7 @@ export type PrivateMessenger = Readonly<{
 export type PrivateUpdateHandler = (update: TelegramUpdate, messenger: PrivateMessenger) => Promise<void>;
 
 export function createPrivateUpdateHandler<TQueryResult extends PgQueryResultHKT>(input: Readonly<{
+  callbackSigningSecret?: string;
   database: RepositoryDatabase<TQueryResult>;
   isCurrentChatAdmin?: CurrentChatAdminChecker;
   logger?: Logger;
@@ -65,7 +66,7 @@ export function createPrivateUpdateHandler<TQueryResult extends PgQueryResultHKT
   onboarding?: OnboardingService;
 }>): PrivateUpdateHandler {
   const editSessions = createSuggestionEditSessionService(input.database);
-  const commands = createPrivateCommandHandler(input.database);
+  const commands = createPrivateCommandHandler(input.database, input.callbackSigningSecret);
   return async (update, messenger) => {
     const parsed = privateMessageSchema.safeParse(update.payload);
     if (!parsed.success || parsed.data.message.from.is_bot) {
@@ -112,6 +113,7 @@ export function createPrivateUpdateHandler<TQueryResult extends PgQueryResultHKT
       const result = await commands.handle({ command, telegramUserId: message.from.id });
       if (result.handled) {
         await messenger.sendPrivateMessage({
+          ...(result.replyMarkup ? { replyMarkup: result.replyMarkup } : {}),
           telegramUserId: message.from.id,
           text: result.text ?? onboardingHelpText,
         });

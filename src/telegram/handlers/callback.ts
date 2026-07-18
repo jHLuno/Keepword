@@ -25,6 +25,8 @@ import {
 import { createCommitmentRescheduleService, CommitmentRescheduleError } from '../../services/commitment-reschedule-sessions.js';
 import { CallbackDataError, parseSignedCallbackData } from '../callback-data.js';
 import type { TelegramUpdate } from '../bot.js';
+import { createPrivateCommandHandler } from './commands.js';
+import type { InlineKeyboardMarkup } from '../messages.js';
 
 const callbackUpdateSchema = z
   .object({
@@ -37,6 +39,7 @@ const callbackUpdateSchema = z
       id: z.string().min(1),
       message: z.object({
         chat: z.object({ id: z.number().int(), type: z.enum(['group', 'private', 'supergroup']) }),
+        message_id: z.number().int().nonnegative().optional(),
       }),
     }),
   })
@@ -45,6 +48,12 @@ const callbackUpdateSchema = z
 export type CallbackMessenger = Readonly<{
   answerCallbackQuery: (input: Readonly<{ callbackQueryId: string; text: string }>) => Promise<void>;
   isCurrentChatAdmin?: CurrentChatAdminChecker;
+  editPrivateCheckMessage?: (input: Readonly<{
+    replyMarkup?: InlineKeyboardMarkup;
+    telegramChatId: string;
+    telegramMessageId: string;
+    text: string;
+  }>) => Promise<void>;
   sendPrivateEditPrompt?: (input: Readonly<{ telegramUserId: number }>) => Promise<void>;
   sendActionFeedback?: (input: Readonly<{ telegramChatId: string; text: string }>) => Promise<void>;
 }>;
@@ -118,6 +127,32 @@ export function createCommitmentActionCallbackHandler<TQueryResult extends PgQue
       const callbackTokens = createCallbackTokenService(input.database);
       const resolvedCallback = await callbackTokens.resolve(signedCallback);
       const currentAdminChecker = input.isCurrentChatAdmin ?? messenger.isCurrentChatAdmin ?? (() => Promise.resolve(false));
+      if (resolvedCallback.kind === 'check_page') {
+        if (
+          signedCallback.action !== 'check_page' ||
+          callback.message.chat.type !== 'private' ||
+          callback.message.message_id === undefined ||
+          resolvedCallback.telegramUserId !== telegramUserId
+        ) {
+          throw new CommitmentUpdateError('UNAUTHORIZED');
+        }
+        if (!messenger.editPrivateCheckMessage) {
+          throw new CallbackDataError();
+        }
+        await callbackTokens.claim(signedCallback);
+        const page = await createPrivateCommandHandler(input.database, input.callbackSigningSecret).getCheckPage({
+          page: resolvedCallback.page,
+          telegramUserId,
+        });
+        await messenger.editPrivateCheckMessage({
+          telegramChatId,
+          telegramMessageId: String(callback.message.message_id),
+          text: page.text ?? unavailableText,
+          ...(page.replyMarkup ? { replyMarkup: page.replyMarkup } : {}),
+        });
+        await messenger.answerCallbackQuery({ callbackQueryId: callback.id, text: 'Страница обновлена.' });
+        return;
+      }
       if (resolvedCallback.kind === 'commitment') {
         const commitmentAuthorization = createAuthorizeCommitmentAction(input.database, currentAdminChecker);
         const actionTelegramChatId = callback.message.chat.type === 'private'

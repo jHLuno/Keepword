@@ -1,8 +1,11 @@
 import { and, asc, eq, inArray, isNotNull } from 'drizzle-orm';
 import type { PgQueryResultHKT } from 'drizzle-orm/pg-core';
 
-import { chatMemberships, chats, commitments, commitmentStatus, users } from '../../db/schema.js';
+import { chatMemberships, chats, commitments, users } from '../../db/schema.js';
 import type { RepositoryDatabase } from '../../repositories/database.js';
+import { createCallbackTokenService } from '../../services/callback-tokens.js';
+import { createSignedCallback } from '../callback-data.js';
+import { renderPrivateCheck, type InlineKeyboardMarkup, type PrivateCheckItem } from '../messages.js';
 
 export type TelegramCommand = Readonly<{
   argument: string | null;
@@ -11,6 +14,7 @@ export type TelegramCommand = Readonly<{
 
 export type PrivateCommandResult = Readonly<{
   handled: boolean;
+  replyMarkup?: InlineKeyboardMarkup;
   text?: string;
 }>;
 
@@ -24,9 +28,12 @@ type ConnectedChat = Readonly<{
 type CheckRow = Readonly<{
   chatTitle: string;
   dueDateText: string | null;
-  status: (typeof commitmentStatus.enumValues)[number];
+  id: string;
+  status: PrivateCheckItem['status'];
   title: string;
 }>;
+
+const checkPageSize = 5;
 
 const privateHelpText = [
   'Keepword помогает не терять подтверждённые договорённости.',
@@ -67,25 +74,11 @@ function selectChat(chatsForUser: readonly ConnectedChat[], argument: string | n
   return Number.isSafeInteger(index) ? chatsForUser[index] ?? null : null;
 }
 
-function renderCheck(rows: readonly CheckRow[]): string {
-  const sections: ReadonlyArray<Readonly<{ heading: string; status: CheckRow['status'] }>> = [
-    { heading: '🔴 Просрочены', status: 'overdue' },
-    { heading: '🟡 Открытые', status: 'open' },
-    { heading: '🟠 Есть блокер', status: 'blocked' },
-  ];
-  const renderedSections = sections.flatMap(({ heading, status }) => {
-    const tasks = rows.filter((row) => row.status === status);
-    if (tasks.length === 0) {
-      return [];
-    }
-    return [`${heading}\n${tasks.map((task) => `— [${task.chatTitle}] ${task.title}${task.dueDateText ? ` · ${task.dueDateText}` : ''}`).join('\n')}`];
-  });
-  return `📋 Мои обязательства\n\n${renderedSections.length === 0 ? '— активных обязательств нет' : renderedSections.join('\n\n')}`;
-}
-
 export function createPrivateCommandHandler<TQueryResult extends PgQueryResultHKT>(
   database: RepositoryDatabase<TQueryResult>,
+  callbackSigningSecret?: string,
 ): Readonly<{
+  getCheckPage: (input: Readonly<{ page: number; telegramUserId: number }>) => Promise<PrivateCommandResult>;
   handle: (input: Readonly<{ command: TelegramCommand; telegramUserId: number }>) => Promise<PrivateCommandResult>;
 }> {
   async function connectedChats(telegramUserId: number): Promise<readonly ConnectedChat[]> {
@@ -119,7 +112,91 @@ export function createPrivateCommandHandler<TQueryResult extends PgQueryResultHK
     return membership.length > 0;
   }
 
+  async function getCheckPage(input: Readonly<{ page: number; telegramUserId: number }>): Promise<PrivateCommandResult> {
+    if (!Number.isSafeInteger(input.page) || input.page < 0 || !await hasCompletedNotificationOnboarding(input.telegramUserId)) {
+      return { handled: true, text: 'Сначала подключите уведомления через ссылку из нужной группы.' };
+    }
+    const rows = await database
+      .select({
+        chatTitle: chats.title,
+        dueDateText: commitments.dueDateText,
+        id: commitments.id,
+        status: commitments.status,
+        title: commitments.title,
+      })
+      .from(commitments)
+      .innerJoin(users, eq(commitments.assigneeUserId, users.id))
+      .innerJoin(chats, and(eq(commitments.chatId, chats.id), eq(commitments.workspaceId, chats.workspaceId)))
+      .innerJoin(chatMemberships, and(
+        eq(chatMemberships.chatId, commitments.chatId),
+        eq(chatMemberships.workspaceId, commitments.workspaceId),
+        eq(chatMemberships.userId, commitments.assigneeUserId),
+      ))
+      .where(
+        and(
+          eq(users.telegramUserId, input.telegramUserId),
+          isNotNull(users.privateChatStartedAt),
+          isNotNull(chatMemberships.notificationsConnectedAt),
+          eq(chats.isActive, true),
+          inArray(commitments.status, ['open', 'overdue', 'blocked']),
+        ),
+      )
+      .orderBy(asc(commitments.dueAt), asc(commitments.createdAt))
+      .limit(checkPageSize + 1)
+      .offset(input.page * checkPageSize);
+    const pageRows = rows.slice(0, checkPageSize) as readonly CheckRow[];
+    if (pageRows.length === 0) {
+      return { handled: true, ...renderPrivateCheck({ items: [] }) };
+    }
+    const items: PrivateCheckItem[] = pageRows.map((row) => ({
+      chatTitle: row.chatTitle,
+      dueDateText: row.dueDateText,
+      status: row.status,
+      title: row.title,
+    }));
+    if (!callbackSigningSecret) {
+      return { handled: true, ...renderPrivateCheck({ items }) };
+    }
+    const callbackTokens = createCallbackTokenService(database);
+    for (const [index, row] of pageRows.entries()) {
+      const callbacks = await callbackTokens.issueCommitmentCallbacks({
+        actions: ['complete', 'block', 'reschedule'],
+        commitmentId: row.id,
+      });
+      if (!callbacks.complete || !callbacks.block || !callbacks.reschedule) {
+        throw new Error('Expected commitment callbacks');
+      }
+      items[index] = {
+        callbacks: {
+          block: createSignedCallback('block', callbacks.block, callbackSigningSecret),
+          complete: createSignedCallback('complete', callbacks.complete, callbackSigningSecret),
+          reschedule: createSignedCallback('reschedule', callbacks.reschedule, callbackSigningSecret),
+        },
+        chatTitle: row.chatTitle,
+        dueDateText: row.dueDateText,
+        status: row.status,
+        title: row.title,
+      };
+    }
+    const previousPageCallback = input.page === 0
+      ? undefined
+      : createSignedCallback(
+        'check_page',
+        await callbackTokens.issueCheckPageCallback({ page: input.page - 1, telegramUserId: input.telegramUserId }),
+        callbackSigningSecret,
+      );
+    const nextPageCallback = rows.length > checkPageSize
+      ? createSignedCallback(
+        'check_page',
+        await callbackTokens.issueCheckPageCallback({ page: input.page + 1, telegramUserId: input.telegramUserId }),
+        callbackSigningSecret,
+      )
+      : undefined;
+    return { handled: true, ...renderPrivateCheck({ items, nextPageCallback, previousPageCallback }) };
+  }
+
   return {
+    getCheckPage,
     async handle(input) {
       if (input.command.name === 'help') {
         return { handled: true, text: privateHelpText };
@@ -137,35 +214,7 @@ export function createPrivateCommandHandler<TQueryResult extends PgQueryResultHK
         };
       }
       if (input.command.name === 'check') {
-        if (!await hasCompletedNotificationOnboarding(input.telegramUserId)) {
-          return { handled: true, text: 'Сначала подключите уведомления через ссылку из нужной группы.' };
-        }
-        const rows = await database
-          .select({
-            chatTitle: chats.title,
-            dueDateText: commitments.dueDateText,
-            status: commitments.status,
-            title: commitments.title,
-          })
-          .from(commitments)
-          .innerJoin(users, eq(commitments.assigneeUserId, users.id))
-          .innerJoin(chats, and(eq(commitments.chatId, chats.id), eq(commitments.workspaceId, chats.workspaceId)))
-          .innerJoin(chatMemberships, and(
-            eq(chatMemberships.chatId, commitments.chatId),
-            eq(chatMemberships.workspaceId, commitments.workspaceId),
-            eq(chatMemberships.userId, commitments.assigneeUserId),
-          ))
-          .where(
-            and(
-              eq(users.telegramUserId, input.telegramUserId),
-              isNotNull(users.privateChatStartedAt),
-              isNotNull(chatMemberships.notificationsConnectedAt),
-              eq(chats.isActive, true),
-              inArray(commitments.status, ['open', 'overdue', 'blocked']),
-            ),
-          )
-          .orderBy(asc(commitments.dueAt), asc(commitments.createdAt));
-        return { handled: true, text: renderCheck(rows) };
+        return getCheckPage({ page: 0, telegramUserId: input.telegramUserId });
       }
       const chatsForUser = await connectedChats(input.telegramUserId);
       if (input.command.name === 'tasks') {

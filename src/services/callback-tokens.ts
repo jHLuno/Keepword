@@ -11,6 +11,12 @@ const callbackLifetimeMs = 7 * 24 * 60 * 60 * 1_000;
 
 type SuggestionCallbackAction = 'confirm' | 'edit' | 'reject';
 type CommitmentCallbackAction = 'block' | 'cancel' | 'complete' | 'open' | 'overdue' | 'reschedule';
+type CheckPageCallbackAction = 'check_page';
+
+type ResolvedCallback =
+  | Readonly<{ kind: 'suggestion'; suggestionId: string }>
+  | Readonly<{ commitmentId: string; kind: 'commitment' }>
+  | Readonly<{ kind: 'check_page'; page: number; telegramUserId: number }>;
 
 export class CallbackTokenError extends Error {
   readonly code: 'CALLBACK_UNAVAILABLE';
@@ -30,14 +36,9 @@ export type CallbackTokenService = Readonly<{
     actions: readonly SuggestionCallbackAction[];
     suggestionId: string;
   }>) => Promise<Readonly<Partial<Record<SuggestionCallbackAction, string>>>>;
-  claim: (input: Readonly<{ action: CallbackAction; nonce: string }>) => Promise<
-    | Readonly<{ kind: 'suggestion'; suggestionId: string }>
-    | Readonly<{ commitmentId: string; kind: 'commitment' }>
-  >;
-  resolve: (input: Readonly<{ action: CallbackAction; nonce: string }>) => Promise<
-    | Readonly<{ kind: 'suggestion'; suggestionId: string }>
-    | Readonly<{ commitmentId: string; kind: 'commitment' }>
-  >;
+  issueCheckPageCallback: (input: Readonly<{ page: number; telegramUserId: number }>) => Promise<string>;
+  claim: (input: Readonly<{ action: CallbackAction; nonce: string }>) => Promise<ResolvedCallback>;
+  resolve: (input: Readonly<{ action: CallbackAction; nonce: string }>) => Promise<ResolvedCallback>;
 }>;
 
 function hashNonce(nonce: string): string {
@@ -53,7 +54,7 @@ export function createCallbackTokenService<TQueryResult extends PgQueryResultHKT
 ): CallbackTokenService {
   async function issue(
     actions: readonly CallbackAction[],
-    target: Readonly<{ commitmentId?: string; suggestionId?: string }>,
+    target: Readonly<{ checkPage?: number; commitmentId?: string; suggestionId?: string; telegramUserId?: number }>,
   ): Promise<Readonly<Partial<Record<CallbackAction, string>>>> {
     const result: Partial<Record<CallbackAction, string>> = {};
     const expiresAt = new Date(Date.now() + callbackLifetimeMs);
@@ -61,10 +62,12 @@ export function createCallbackTokenService<TQueryResult extends PgQueryResultHKT
       const nonce = createNonce();
       await database.insert(callbackTokens).values({
         action,
+        checkPage: target.checkPage ?? null,
         commitmentId: target.commitmentId ?? null,
         expiresAt,
         nonceHash: hashNonce(nonce),
         suggestionId: target.suggestionId ?? null,
+        telegramUserId: target.telegramUserId ?? null,
       });
       result[action] = nonce;
     }
@@ -78,6 +81,21 @@ export function createCallbackTokenService<TQueryResult extends PgQueryResultHKT
 
     async issueSuggestionCallbacks(input) {
       return issue(input.actions, { suggestionId: input.suggestionId });
+    },
+
+    async issueCheckPageCallback(input) {
+      if (!Number.isSafeInteger(input.page) || input.page < 0 || !Number.isSafeInteger(input.telegramUserId)) {
+        throw new CallbackTokenError();
+      }
+      const callbacks = await issue(['check_page' satisfies CheckPageCallbackAction], {
+        checkPage: input.page,
+        telegramUserId: input.telegramUserId,
+      });
+      const nonce = callbacks.check_page;
+      if (!nonce) {
+        throw new CallbackTokenError();
+      }
+      return nonce;
     },
 
     async claim(input) {
@@ -102,6 +120,9 @@ export function createCallbackTokenService<TQueryResult extends PgQueryResultHKT
       }
       if (token.commitmentId) {
         return { commitmentId: token.commitmentId, kind: 'commitment' };
+      }
+      if (token.action === 'check_page' && token.checkPage !== null && token.telegramUserId !== null) {
+        return { kind: 'check_page', page: token.checkPage, telegramUserId: token.telegramUserId };
       }
       throw new CallbackTokenError();
     },
@@ -128,6 +149,9 @@ export function createCallbackTokenService<TQueryResult extends PgQueryResultHKT
       }
       if (token.commitmentId) {
         return { commitmentId: token.commitmentId, kind: 'commitment' };
+      }
+      if (token.action === 'check_page' && token.checkPage !== null && token.telegramUserId !== null) {
+        return { kind: 'check_page', page: token.checkPage, telegramUserId: token.telegramUserId };
       }
       throw new CallbackTokenError();
     },
