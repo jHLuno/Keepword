@@ -3,23 +3,16 @@
 ## 2026-07-19 — Handoff
 
 ### Done
+- Fixed webhook processing by initializing grammY before each process instance handles its first update.
+- Added regression coverage for initialization before webhook dispatch.
+
+### Next recommended step
+- Wait for Railway Web auto-deploy, then send a new high-confidence commitment message in the group and verify `POST /telegram/webhook` returns 200.
+
+## 2026-07-19 — Handoff
+
+### Done
 - Safe production diagnostics now unwrap grammY handler errors.
 
 ### Next recommended step
 - Redeploy the Web service and inspect the next `telegram_update_dispatch_failed` error code.
-
-## 2026-07-19 — Handoff
-
-### Done
-- Added safe first-Keepword-frame diagnostic logging for unknown failures.
-
-### Next recommended step
-- Redeploy the Web service and inspect the next `telegram_update_dispatch_failed` code.
-
-## 2026-07-19 — Handoff
-
-### Done
-- Added safe code mapping for known internal Telegram-flow failures.
-
-### Next recommended step
-- Redeploy the Web service and inspect the next `telegram_update_dispatch_failed` code.

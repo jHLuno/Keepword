@@ -106,6 +106,12 @@ export function createTelegramBot(input: Readonly<{
   token: string;
 }>): TelegramAdapter {
   const bot = new Bot<Context>(input.token);
+  let initialization: Promise<void> | undefined;
+
+  function initialize(): Promise<void> {
+    initialization ??= bot.init();
+    return initialization;
+  }
 
   bot.on('my_chat_member', async (context) => {
     await input.groupUpdateHandler(
@@ -140,6 +146,7 @@ export function createTelegramBot(input: Readonly<{
 
   return {
     async handleUpdate(update) {
+      await initialize();
       await bot.handleUpdate(update.payload as Update);
     },
   };
