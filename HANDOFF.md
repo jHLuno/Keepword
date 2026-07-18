@@ -5,6 +5,8 @@
 ### Done
 - Added migration `0010_suggestion_events` and append-only, chat/workspace-scoped suggestion-decision memory.
 - Creation, edit, confirmation, rejection, and chat privacy deletion have integration coverage, including a confirm/reject race.
+- Added forward migration `0011_preserve_suggestion_event_history`: a former actor's event remains immutable after membership deletion, while source-chat deletion still removes its event history.
+- Added database-level integration coverage for rejecting cross-chat suggestion event inserts.
 
 ### Not done
 - Calibration and reliability aggregates are not implemented yet; they will derive only from this scoped event history in later plan tasks.

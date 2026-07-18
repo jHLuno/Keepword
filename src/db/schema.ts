@@ -259,11 +259,6 @@ export const suggestionEvents = pgTable(
       columns: [table.suggestionId, table.workspaceId, table.chatId],
       foreignColumns: [commitmentSuggestions.id, commitmentSuggestions.workspaceId, commitmentSuggestions.chatId],
     }).onDelete('cascade'),
-    foreignKey({
-      name: 'suggestion_events_actor_membership_fkey',
-      columns: [table.chatId, table.workspaceId, table.actorUserId],
-      foreignColumns: [chatMemberships.chatId, chatMemberships.workspaceId, chatMemberships.userId],
-    }).onDelete('cascade'),
   ],
 );
 

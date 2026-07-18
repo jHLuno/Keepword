@@ -1,7 +1,7 @@
 import { and, asc, count, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 
-import { chatMemberships, commitmentSuggestions, suggestionEvents } from '../../src/db/schema.js';
+import { chatMemberships, commitmentSuggestions, suggestionEvents, users } from '../../src/db/schema.js';
 import { createMessagesRepository } from '../../src/repositories/messages.js';
 import { createConfirmSuggestion, createRejectSuggestion } from '../../src/services/confirm-suggestion.js';
 import { createConnectChat } from '../../src/services/connect-chat.js';
@@ -24,6 +24,11 @@ function firstRow<Row>(rows: readonly Row[]): Row {
   const row = rows[0];
   if (!row) throw new Error('Expected a row');
   return row;
+}
+
+function errorDetails(error: unknown): string {
+  if (!(error instanceof Error)) return String(error);
+  return [error.message, error.cause instanceof Error ? error.cause.message : ''].join('\n');
 }
 
 async function createFixture(): Promise<SuggestionFixture> {
@@ -201,5 +206,70 @@ describe('immutable suggestion event memory', () => {
     ]);
     expect(Number(deletedCount[0]?.total ?? 0)).toBe(0);
     expect(Number(otherCount[0]?.total ?? 0)).toBe(1);
+  });
+
+  test('keeps event history when an unrelated actor membership is removed', async () => {
+    const fixture = await createFixture();
+    const suggestion = await createPendingSuggestion(fixture);
+    const actor = firstRow(
+      await database.db
+        .insert(users)
+        .values({ firstName: 'Former actor', telegramUserId: nextTelegramChatId + 10_000 })
+        .returning({ id: users.id }),
+    );
+    await database.db.insert(chatMemberships).values({
+      chatId: fixture.chatId,
+      role: 'member',
+      userId: actor.id,
+      workspaceId: fixture.workspaceId,
+    });
+    const event = firstRow(
+      await database.db
+        .insert(suggestionEvents)
+        .values({
+          actorUserId: actor.id,
+          chatId: fixture.chatId,
+          eventType: 'confirmed',
+          snapshot: { final: { title: 'Отправить КП' } },
+          suggestionId: suggestion.id,
+          workspaceId: fixture.workspaceId,
+        })
+        .returning({ id: suggestionEvents.id }),
+    );
+
+    await database.db.delete(chatMemberships).where(and(
+      eq(chatMemberships.chatId, fixture.chatId),
+      eq(chatMemberships.workspaceId, fixture.workspaceId),
+      eq(chatMemberships.userId, actor.id),
+    ));
+
+    const persisted = await database.db
+      .select({ id: suggestionEvents.id })
+      .from(suggestionEvents)
+      .where(eq(suggestionEvents.id, event.id));
+    expect(persisted).toEqual([{ id: event.id }]);
+  });
+
+  test('rejects an event whose suggestion belongs to another chat scope', async () => {
+    const fixture = await createFixture();
+    const otherFixture = await createFixture();
+    const suggestion = await createPendingSuggestion(fixture);
+
+    const error = await database.db
+      .insert(suggestionEvents)
+      .values({
+        actorUserId: otherFixture.userId,
+        chatId: otherFixture.chatId,
+        eventType: 'suggested',
+        snapshot: { original: { title: 'Cross-scope attempt' } },
+        suggestionId: suggestion.id,
+        workspaceId: otherFixture.workspaceId,
+      })
+      .then(
+        () => null,
+        (rejected: unknown) => rejected,
+      );
+
+    expect(errorDetails(error)).toMatch(/suggestion_events_suggestion_scope_fkey|foreign key/i);
   });
 });
