@@ -10,7 +10,12 @@ import type { OnboardingInvitationService } from '../../services/onboarding-invi
 import type { OnboardingService } from '../../services/onboarding.js';
 import type { CurrentChatAdminChecker } from '../../services/authorize-action.js';
 import type { TelegramUpdate } from '../bot.js';
-import { onboardingCardText, renderNotificationStatus } from '../messages.js';
+import {
+  notificationStatusPrivateChatRequiredText,
+  notificationStatusSentText,
+  onboardingCardText,
+  renderNotificationStatus,
+} from '../messages.js';
 
 const groupMemberUpdateSchema = z
   .object({
@@ -58,6 +63,7 @@ export type GroupMessenger = Readonly<{
   isCurrentChatAdmin?: CurrentChatAdminChecker;
   sendClarificationRequest: (request: ClarificationRequest) => Promise<void>;
   sendGroupMessage?: (input: Readonly<{ telegramChatId: string; text: string }>) => Promise<void>;
+  sendPrivateMessage?: (input: Readonly<{ telegramUserId: number; text: string }>) => Promise<void>;
   sendOnboardingCard: (card: OnboardingCard) => Promise<void>;
   sendNotificationInvite?: (invite: Readonly<{
     onboardingDeepLink: string;
@@ -110,9 +116,24 @@ export function createGroupUpdateHandler(input: Readonly<{
           });
           return;
         }
+        const status = await input.onboarding.notificationStatusForPrivateUser({
+          chatId: chat.id,
+          telegramUserId: String(message.from.id),
+        });
+        if (!status) {
+          await messenger.sendGroupMessage?.({
+            telegramChatId: chat.telegramChatId,
+            text: notificationStatusPrivateChatRequiredText,
+          });
+          return;
+        }
+        await messenger.sendPrivateMessage?.({
+          telegramUserId: message.from.id,
+          text: renderNotificationStatus(status),
+        });
         await messenger.sendGroupMessage?.({
           telegramChatId: chat.telegramChatId,
-          text: renderNotificationStatus(await input.onboarding.notificationStatus(chat.id)),
+          text: notificationStatusSentText,
         });
         return;
       }

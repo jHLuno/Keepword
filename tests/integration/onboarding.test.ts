@@ -167,7 +167,7 @@ describe('private notification onboarding', () => {
     expect(await onboarding.claimNotificationInvite({ chatId: chat.chatId, telegramUserId: '96105' })).toBe(false);
   });
 
-  test('lets only a current administrator publish an invite and see notification status', async () => {
+  test('lets only a current administrator publish an invite', async () => {
     const chat = await connectChat();
     const onboarding = createOnboardingService(database.db, { botUsername: 'keepword_test_bot' });
     const cards: string[] = [];
@@ -210,8 +210,98 @@ describe('private notification onboarding', () => {
     expect(groupMessages).toContain('Только администратор чата может управлять уведомлениями.');
 
     await handler(updateFor('/invite', 96_107), messenger(true));
-    await handler(updateFor('/notifications', 96_107), messenger(true));
     expect(cards).toEqual([expect.stringMatching(/^https:\/\/t\.me\/keepword_test_bot\?start=join_[A-Za-z0-9_-]+$/)]);
-    expect(groupMessages.at(-1)).toContain('Notification status');
+  });
+
+  test('delivers notification status privately without exposing counts or names in the group', async () => {
+    const chat = await connectChat();
+    const onboarding = createOnboardingService(database.db, { botUsername: 'keepword_test_bot' });
+    const adminTelegramUserId = 96_109;
+    await onboarding.redeemOnboardingToken({
+      telegramUserId: String(adminTelegramUserId),
+      token: /start=join_([A-Za-z0-9_-]+)/.exec(await onboarding.createOnboardingLink(chat.chatId))?.[1] ?? '',
+    });
+    const groupMessages: string[] = [];
+    const privateMessages: string[] = [];
+    const privateRecipients: number[] = [];
+    const handler = createGroupUpdateHandler({
+      botUsername: 'keepword_test_bot',
+      connectChat: createConnectChat(database.db),
+      onboarding,
+      onboardingInvitations: createOnboardingInvitationService(database.db),
+    });
+
+    await handler(
+      notificationCommand(chat.telegramChatId, adminTelegramUserId),
+      statusMessenger(groupMessages, privateMessages, privateRecipients, true),
+    );
+
+    expect(groupMessages).toEqual(['Статус уведомлений отправлен вам в личный чат.']);
+    expect(groupMessages.join('\n')).not.toMatch(/Connected|Not connected|Telegram user|@/);
+    expect(privateMessages).toEqual([expect.stringContaining('Notification status')]);
+    expect(privateRecipients).toEqual([adminTelegramUserId]);
+  });
+
+  test('withholds notification status when the current administrator has not started the bot privately', async () => {
+    const chat = await connectChat();
+    const onboarding = createOnboardingService(database.db, { botUsername: 'keepword_test_bot' });
+    const groupMessages: string[] = [];
+    const privateMessages: string[] = [];
+    const privateRecipients: number[] = [];
+    const handler = createGroupUpdateHandler({
+      botUsername: 'keepword_test_bot',
+      connectChat: createConnectChat(database.db),
+      onboarding,
+      onboardingInvitations: createOnboardingInvitationService(database.db),
+    });
+
+    await handler(
+      notificationCommand(chat.telegramChatId, 96_110),
+      statusMessenger(groupMessages, privateMessages, privateRecipients, true),
+    );
+
+    expect(groupMessages).toEqual(['Откройте личный чат с Keepword и нажмите Start, чтобы получить статус уведомлений.']);
+    expect(groupMessages.join('\n')).not.toMatch(/Connected|Not connected|Telegram user|@/);
+    expect(privateMessages).toEqual([]);
+    expect(privateRecipients).toEqual([]);
   });
 });
+
+function notificationCommand(telegramChatId: string, actorId: number) {
+  return {
+    payload: {
+      message: {
+        chat: { id: Number(telegramChatId), type: 'supergroup' },
+        date: 1_752_000_000,
+        from: { first_name: 'Admin', id: actorId, is_bot: false },
+        message_id: 1,
+        text: '/notifications',
+      },
+      update_id: actorId,
+    },
+    updateId: actorId,
+  };
+}
+
+function statusMessenger(
+  groupMessages: string[],
+  privateMessages: string[],
+  privateRecipients: number[],
+  isAdmin: boolean,
+) {
+  return {
+    isCurrentChatAdmin: () => Promise.resolve(isAdmin),
+    sendClarificationRequest: () => Promise.resolve(),
+    sendGroupMessage: ({ text }: Readonly<{ telegramChatId: string; text: string }>) => {
+      groupMessages.push(text);
+      return Promise.resolve();
+    },
+    sendOnboardingCard: () => Promise.resolve(),
+    sendSuggestionReply: () => Promise.resolve(),
+    sendPrivateMessage: ({ telegramUserId, text }: Readonly<{ telegramUserId: number; text: string }>) => {
+      privateMessages.push(text);
+      privateRecipients.push(telegramUserId);
+      return Promise.resolve();
+    },
+  };
+}

@@ -53,6 +53,10 @@ function createGrammYMessenger(context: Context): GroupMessenger {
       await context.api.sendMessage(Number(input.telegramChatId), input.text);
     },
 
+    async sendPrivateMessage(input) {
+      await context.api.sendMessage(input.telegramUserId, input.text);
+    },
+
     async sendSuggestionReply(reply) {
       await context.api.sendMessage(Number(reply.telegramChatId), reply.text, {
         reply_markup: reply.replyMarkup,

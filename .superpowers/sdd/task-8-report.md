@@ -23,3 +23,10 @@
 ## Logs
 
 - `onboarding_completed` is recorded for successful and rejected private onboarding attempts without logging tokens or message contents.
+
+## P1 privacy follow-up
+
+- `/notifications` never renders notification counts or participant names in a group.
+- A current administrator with active private notifications receives the complete status only in their personal chat; the group receives a neutral acknowledgement.
+- A current administrator without an active private notification connection receives only a prompt to open and start the private bot chat.
+- The integration test verifies that the group contains no counts or usernames and that the private status is addressed to the requesting administrator.

@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 
-import { and, eq, exists, gt, isNull, lt, or } from 'drizzle-orm';
+import { and, eq, exists, gt, isNotNull, isNull, lt, or } from 'drizzle-orm';
 import type { PgQueryResultHKT } from 'drizzle-orm/pg-core';
 
 import { chatMemberships, chats, onboardingTokens, users } from '../db/schema.js';
@@ -41,6 +41,10 @@ export type OnboardingService = Readonly<{
     title: string;
   }> | null>;
   notificationStatus: (chatId: string) => Promise<NotificationStatus>;
+  notificationStatusForPrivateUser: (input: Readonly<{
+    chatId: string;
+    telegramUserId: string;
+  }>) => Promise<NotificationStatus | null>;
   redeemOnboardingToken: (input: Readonly<{ token: string; telegramUserId: string }>) => Promise<ChatMembership>;
 }>;
 
@@ -72,6 +76,23 @@ export function createOnboardingService<TQueryResult extends PgQueryResultHKT>(
   input: Readonly<{ botUsername: string }>,
 ): OnboardingService {
   const usersRepository = createUsersRepository(database);
+  const getNotificationStatus = async (chatId: string): Promise<NotificationStatus> => {
+    const rows = await database
+      .select({
+        connected: chatMemberships.notificationsEnabled,
+        firstName: users.firstName,
+        username: users.username,
+      })
+      .from(chatMemberships)
+      .innerJoin(users, eq(chatMemberships.userId, users.id))
+      .where(eq(chatMemberships.chatId, chatId));
+    return {
+      connected: rows.filter((row) => row.connected).length,
+      notConnected: rows
+        .filter((row) => !row.connected)
+        .map((row) => row.username ? `@${row.username}` : row.firstName),
+    };
+  };
   return {
     async createOnboardingLink(chatId) {
       const token = randomBytes(32).toString('base64url');
@@ -251,21 +272,27 @@ export function createOnboardingService<TQueryResult extends PgQueryResultHKT>(
     },
 
     async notificationStatus(chatId) {
-      const rows = await database
-        .select({
-          connected: chatMemberships.notificationsEnabled,
-          firstName: users.firstName,
-          username: users.username,
-        })
-        .from(chatMemberships)
-        .innerJoin(users, eq(chatMemberships.userId, users.id))
-        .where(eq(chatMemberships.chatId, chatId));
-      return {
-        connected: rows.filter((row) => row.connected).length,
-        notConnected: rows
-          .filter((row) => !row.connected)
-          .map((row) => row.username ? `@${row.username}` : row.firstName),
-      };
+      return getNotificationStatus(chatId);
+    },
+
+    async notificationStatusForPrivateUser(input) {
+      const telegramUserId = parseTelegramUserId(input.telegramUserId);
+      const membership = (
+        await database
+          .select({ id: chatMemberships.id })
+          .from(chatMemberships)
+          .innerJoin(users, eq(chatMemberships.userId, users.id))
+          .where(
+            and(
+              eq(chatMemberships.chatId, input.chatId),
+              eq(chatMemberships.notificationsEnabled, true),
+              eq(users.telegramUserId, telegramUserId),
+              isNotNull(users.privateChatStartedAt),
+            ),
+          )
+          .limit(1)
+      )[0];
+      return membership ? getNotificationStatus(input.chatId) : null;
     },
   };
 }
