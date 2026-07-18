@@ -1,5 +1,6 @@
 import type { TelegramAdapter, TelegramAdapterFactory, TelegramUpdate } from '../../src/telegram/bot.js';
 import type { CallbackMessenger } from '../../src/telegram/handlers/callback.js';
+import type { PrivateMessenger, PrivateUpdateHandler } from '../../src/telegram/handlers/private.js';
 import type { GroupMessenger, GroupUpdateHandler } from '../../src/telegram/handlers/group.js';
 import type { ClarificationRequest, SuggestionReply } from '../../src/services/analyze-message.js';
 
@@ -14,6 +15,7 @@ export type FakeTelegram = Readonly<{
   clarificationRequests: readonly ClarificationRequest[];
   handledUpdateIds: readonly number[];
   onboardingCards: readonly RecordedOnboardingCard[];
+  privateMessages: readonly string[];
   suggestionReplies: readonly SuggestionReply[];
   telegramAdapterFactory: TelegramAdapterFactory;
 }>;
@@ -28,6 +30,7 @@ export function createFakeTelegram(options: FakeTelegramOptions = {}): FakeTeleg
   const callbackAnswers: string[] = [];
   const handledUpdateIds: number[] = [];
   const onboardingCards: RecordedOnboardingCard[] = [];
+  const privateMessages: string[] = [];
   const clarificationRequests: ClarificationRequest[] = [];
   const suggestionReplies: SuggestionReply[] = [];
   let remainingOnboardingCardFailures = options.onboardingCardFailuresBeforeSuccess ?? 0;
@@ -65,9 +68,21 @@ export function createFakeTelegram(options: FakeTelegramOptions = {}): FakeTeleg
     },
   };
 
+  const privateMessenger: PrivateMessenger = {
+    isCurrentChatAdmin({ telegramUserId }) {
+      return Promise.resolve(options.currentAdminTelegramUserIds?.includes(telegramUserId) ?? false);
+    },
+
+    sendPrivateMessage({ text }) {
+      privateMessages.push(text);
+      return Promise.resolve();
+    },
+  };
+
   const telegramAdapterFactory: TelegramAdapterFactory = (
     groupUpdateHandler: GroupUpdateHandler,
     callbackUpdateHandler,
+    privateUpdateHandler: PrivateUpdateHandler | undefined,
   ): TelegramAdapter => ({
     async handleUpdate(update: TelegramUpdate) {
       handledUpdateIds.push(update.updateId);
@@ -79,6 +94,10 @@ export function createFakeTelegram(options: FakeTelegramOptions = {}): FakeTeleg
         await callbackUpdateHandler(update, callbackMessenger);
         return;
       }
+      if (privateUpdateHandler && isPrivateMessageUpdate(update.payload)) {
+        await privateUpdateHandler(update, privateMessenger);
+        return;
+      }
       await groupUpdateHandler(update, messenger);
     },
   });
@@ -88,6 +107,7 @@ export function createFakeTelegram(options: FakeTelegramOptions = {}): FakeTeleg
     clarificationRequests,
     handledUpdateIds,
     onboardingCards,
+    privateMessages,
     suggestionReplies,
     telegramAdapterFactory,
   };
@@ -95,4 +115,16 @@ export function createFakeTelegram(options: FakeTelegramOptions = {}): FakeTeleg
 
 function isCallbackUpdate(payload: unknown): boolean {
   return typeof payload === 'object' && payload !== null && 'callback_query' in payload;
+}
+
+function isPrivateMessageUpdate(payload: unknown): boolean {
+  if (typeof payload !== 'object' || payload === null || !('message' in payload)) {
+    return false;
+  }
+  const message = payload.message;
+  if (typeof message !== 'object' || message === null || !('chat' in message)) {
+    return false;
+  }
+  const chat = message.chat;
+  return typeof chat === 'object' && chat !== null && 'type' in chat && chat.type === 'private';
 }

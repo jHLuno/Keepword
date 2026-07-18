@@ -7,6 +7,7 @@ import { renderSuggestion } from '../../src/telegram/messages.js';
 import { createConnectChat } from '../../src/services/connect-chat.js';
 import { createMessagesRepository } from '../../src/repositories/messages.js';
 import { createSuggestion } from '../../src/services/create-suggestion.js';
+import { createCallbackTokenService } from '../../src/services/callback-tokens.js';
 import { buildApp } from '../../src/app.js';
 import { createFakeTelegram } from '../helpers/fake-telegram.js';
 import { createPgliteTestDatabase, type PgliteTestDatabase } from '../helpers/pglite.js';
@@ -85,8 +86,16 @@ async function createFixture(): Promise<Fixture> {
     title: 'Отправить КП клиенту',
     workspaceId: chat.workspaceId,
   });
+  const callbackNonces = await createCallbackTokenService(database.db).issueSuggestionCallbacks({
+    actions: ['confirm', 'edit', 'reject'],
+    suggestionId: suggestion.id,
+  });
+  if (!callbackNonces.confirm || !callbackNonces.edit || !callbackNonces.reject) {
+    throw new Error('Expected callback nonces');
+  }
   const callbackData = renderSuggestion(
     { dueDateText: 'сегодня', id: suggestion.id, title: 'Отправить КП клиенту' },
+    { confirm: callbackNonces.confirm, edit: callbackNonces.edit, reject: callbackNonces.reject },
     callbackSigningSecret,
   ).replyMarkup.inline_keyboard[0]?.[0]?.callback_data;
 

@@ -15,6 +15,7 @@ import { createAnalyzeGroupMessage, type AnalyzeGroupMessage } from './services/
 import { createTelegramBot, type TelegramAdapterFactory } from './telegram/bot.js';
 import { createCommitmentActionCallbackHandler } from './telegram/handlers/callback.js';
 import { createGroupUpdateHandler } from './telegram/handlers/group.js';
+import { createPrivateUpdateHandler } from './telegram/handlers/private.js';
 import type { PgQueryResultHKT } from 'drizzle-orm/pg-core';
 
 const telegramUpdateSchema = z
@@ -68,9 +69,13 @@ export function buildApp<TQueryResult extends PgQueryResultHKT>(
     database: dependencies.database,
     logger,
   });
+  const privateUpdateHandler = createPrivateUpdateHandler({
+    database: dependencies.database,
+    logger,
+  });
   const telegram = dependencies.telegramAdapterFactory
-    ? dependencies.telegramAdapterFactory(groupUpdateHandler, callbackUpdateHandler)
-    : createTelegramBot({ callbackUpdateHandler, groupUpdateHandler, token: config.telegramBotToken });
+    ? dependencies.telegramAdapterFactory(groupUpdateHandler, callbackUpdateHandler, privateUpdateHandler)
+    : createTelegramBot({ callbackUpdateHandler, groupUpdateHandler, privateUpdateHandler, token: config.telegramBotToken });
   const updates = createUpdatesRepository(dependencies.database);
 
   const app = Fastify({ logger: false });

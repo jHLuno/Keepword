@@ -1,4 +1,4 @@
-import { createHmac } from 'node:crypto';
+import { createSignedCallback } from './callback-data.js';
 
 export type InlineKeyboardMarkup = Readonly<{
   inline_keyboard: InlineKeyboardButton[][];
@@ -17,22 +17,15 @@ export type SuggestionCard = Readonly<{
 
 type SuggestionAction = 'confirm' | 'edit' | 'reject';
 
-function createSignedCallback(action: SuggestionAction, suggestionId: string, callbackSigningSecret: string): string {
-  const signature = createHmac('sha256', callbackSigningSecret)
-    .update(`v1:${action}:${suggestionId}`)
-    .digest('base64url')
-    .slice(0, 16);
-  const callbackData = `kw:${action}:${suggestionId}:${signature}`;
+export type SuggestionCallbackNonces = Readonly<Record<SuggestionAction, string>>;
 
-  if (Buffer.byteLength(callbackData, 'utf8') > 64) {
-    throw new Error('Suggestion callback data exceeds Telegram\'s 64-byte limit');
-  }
+type CommitmentAction = 'block' | 'cancel' | 'complete' | 'open' | 'reschedule';
 
-  return callbackData;
-}
+export type CommitmentCallbackNonces = Readonly<Record<CommitmentAction, string>>;
 
 export function renderSuggestion(
   suggestion: SuggestionCard,
+  callbackNonces: SuggestionCallbackNonces,
   callbackSigningSecret: string,
 ): Readonly<{
   replyMarkup: InlineKeyboardMarkup;
@@ -45,12 +38,38 @@ export function renderSuggestion(
     replyMarkup: {
       inline_keyboard: [
         [
-          { callback_data: createSignedCallback('confirm', suggestion.id, callbackSigningSecret), text: 'Подтвердить' },
-          { callback_data: createSignedCallback('edit', suggestion.id, callbackSigningSecret), text: 'Изменить' },
-          { callback_data: createSignedCallback('reject', suggestion.id, callbackSigningSecret), text: 'Не фиксировать' },
+          { callback_data: createSignedCallback('confirm', callbackNonces.confirm, callbackSigningSecret), text: 'Подтвердить' },
+          { callback_data: createSignedCallback('edit', callbackNonces.edit, callbackSigningSecret), text: 'Изменить' },
+          { callback_data: createSignedCallback('reject', callbackNonces.reject, callbackSigningSecret), text: 'Не фиксировать' },
         ],
       ],
     },
     text: `📌 Keepword заметил договорённость\n\n${suggestion.title}${dueLine}`,
+  };
+}
+
+export function renderCommitmentActions(
+  status: 'blocked' | 'open' | 'overdue',
+  callbackNonces: CommitmentCallbackNonces,
+  callbackSigningSecret: string,
+): InlineKeyboardMarkup {
+  const firstRow = [
+    { callback_data: createSignedCallback('complete', callbackNonces.complete, callbackSigningSecret), text: 'Готово' },
+    { callback_data: createSignedCallback('block', callbackNonces.block, callbackSigningSecret), text: 'Есть блокер' },
+    { callback_data: createSignedCallback('cancel', callbackNonces.cancel, callbackSigningSecret), text: 'Отменить' },
+  ];
+  if (status === 'blocked') {
+    return {
+      inline_keyboard: [
+        firstRow,
+        [{ callback_data: createSignedCallback('open', callbackNonces.open, callbackSigningSecret), text: 'Возобновить' }],
+      ],
+    };
+  }
+  return {
+    inline_keyboard: [
+      firstRow,
+      [{ callback_data: createSignedCallback('reschedule', callbackNonces.reschedule, callbackSigningSecret), text: 'Перенести срок' }],
+    ],
   };
 }

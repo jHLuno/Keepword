@@ -15,6 +15,10 @@ import {
   createRejectSuggestion,
   SuggestionActionError,
 } from '../../services/confirm-suggestion.js';
+import { createCallbackTokenService, CallbackTokenError } from '../../services/callback-tokens.js';
+import { createSuggestionEditSessionService } from '../../services/suggestion-edit-sessions.js';
+import { createAuthorizedCommitmentAction, CommitmentUpdateError } from '../../services/update-commitment.js';
+import { createCommitmentRescheduleService, CommitmentRescheduleError } from '../../services/commitment-reschedule-sessions.js';
 import { CallbackDataError, parseSignedCallbackData } from '../callback-data.js';
 import type { TelegramUpdate } from '../bot.js';
 
@@ -37,6 +41,7 @@ const callbackUpdateSchema = z
 export type CallbackMessenger = Readonly<{
   answerCallbackQuery: (input: Readonly<{ callbackQueryId: string; text: string }>) => Promise<void>;
   isCurrentChatAdmin?: CurrentChatAdminChecker;
+  sendPrivateEditPrompt?: (input: Readonly<{ telegramUserId: number }>) => Promise<void>;
   sendActionFeedback?: (input: Readonly<{ telegramChatId: string; text: string }>) => Promise<void>;
 }>;
 
@@ -64,20 +69,79 @@ export function createCommitmentActionCallbackHandler<TQueryResult extends PgQue
     const telegramUserId = callback.from.id;
     try {
       const signedCallback = parseSignedCallbackData(callback.data, input.callbackSigningSecret);
+      const resolvedCallback = await createCallbackTokenService(input.database).resolve(signedCallback);
+      const currentAdminChecker = input.isCurrentChatAdmin ?? messenger.isCurrentChatAdmin ?? (() => Promise.resolve(false));
+      if (resolvedCallback.kind === 'commitment') {
+        if (signedCallback.action === 'reschedule') {
+          await createCommitmentRescheduleService(input.database, currentAdminChecker).begin({
+            actorTelegramUserId: telegramUserId,
+            commitmentId: resolvedCallback.commitmentId,
+            telegramChatId,
+          });
+          await messenger.answerCallbackQuery({
+            callbackQueryId: callback.id,
+            text: 'Откройте личный чат с Keepword и отправьте новую строку due: <срок>.',
+          });
+          return;
+        }
+        if (
+          signedCallback.action !== 'block' &&
+          signedCallback.action !== 'cancel' &&
+          signedCallback.action !== 'complete' &&
+          signedCallback.action !== 'open'
+        ) {
+          throw new CallbackDataError();
+        }
+        await createAuthorizedCommitmentAction(input.database, currentAdminChecker)({
+          action: signedCallback.action,
+          actor: { firstName: callback.from.first_name, telegramUserId },
+          commitmentId: resolvedCallback.commitmentId,
+          telegramChatId,
+        });
+        await messenger.answerCallbackQuery({ callbackQueryId: callback.id, text: 'Статус задачи обновлён.' });
+        input.logger?.info('commitment_updated', {
+          telegramChatId,
+          telegramUserId: String(telegramUserId),
+          result: 'success',
+        });
+        return;
+      }
       if (signedCallback.action === 'edit') {
         const authorize = createAuthorizeSuggestionAction(
           input.database,
-          input.isCurrentChatAdmin ?? messenger.isCurrentChatAdmin ?? (() => Promise.resolve(false)),
+          currentAdminChecker,
         );
         await authorize({
           actor: { firstName: callback.from.first_name, telegramUserId },
-          suggestionId: signedCallback.entityId,
+          suggestionId: resolvedCallback.suggestionId,
           telegramChatId,
+        });
+        const scopedActor = await input.database
+          .select({ userId: chatMemberships.userId })
+          .from(chatMemberships)
+          .innerJoin(users, eq(chatMemberships.userId, users.id))
+          .innerJoin(
+            chats,
+            and(
+              eq(chatMemberships.chatId, chats.id),
+              eq(chatMemberships.workspaceId, chats.workspaceId),
+            ),
+          )
+          .where(and(eq(users.telegramUserId, telegramUserId), eq(chats.telegramChatId, callback.message.chat.id)))
+          .limit(1);
+        const actor = scopedActor[0];
+        if (!actor) {
+          throw new Error('Authorized edit actor could not be scoped');
+        }
+        await createSuggestionEditSessionService(input.database).begin({
+          actorUserId: actor.userId,
+          suggestionId: resolvedCallback.suggestionId,
         });
         await messenger.answerCallbackQuery({
           callbackQueryId: callback.id,
-          text: 'Напишите изменения в личном чате с Keepword.',
+          text: 'Откройте личный чат с Keepword и отправьте поля title, description или due.',
         });
+        await messenger.sendPrivateEditPrompt?.({ telegramUserId });
         return;
       }
       if (signedCallback.action !== 'confirm' && signedCallback.action !== 'reject') {
@@ -86,11 +150,11 @@ export function createCommitmentActionCallbackHandler<TQueryResult extends PgQue
 
       const authorize = createAuthorizeSuggestionAction(
         input.database,
-        input.isCurrentChatAdmin ?? messenger.isCurrentChatAdmin ?? (() => Promise.resolve(false)),
+        currentAdminChecker,
       );
       await authorize({
         actor: { firstName: callback.from.first_name, telegramUserId },
-        suggestionId: signedCallback.entityId,
+        suggestionId: resolvedCallback.suggestionId,
         telegramChatId,
       });
       const scopedActors = await input.database
@@ -114,7 +178,7 @@ export function createCommitmentActionCallbackHandler<TQueryResult extends PgQue
       if (signedCallback.action === 'confirm') {
         await createConfirmSuggestion(input.database)({
           confirmedByUserId: scopedActor.userId,
-          suggestionId: signedCallback.entityId,
+          suggestionId: resolvedCallback.suggestionId,
         });
         await messenger.answerCallbackQuery({ callbackQueryId: callback.id, text: 'Договорённость сохранена.' });
         await messenger.sendActionFeedback?.({ telegramChatId, text: '✅ Договорённость сохранена.' });
@@ -126,7 +190,7 @@ export function createCommitmentActionCallbackHandler<TQueryResult extends PgQue
         return;
       }
 
-      await createRejectSuggestion(input.database)({ suggestionId: signedCallback.entityId });
+      await createRejectSuggestion(input.database)({ suggestionId: resolvedCallback.suggestionId });
       await messenger.answerCallbackQuery({ callbackQueryId: callback.id, text: 'Договорённость не будет сохранена.' });
       await messenger.sendActionFeedback?.({ telegramChatId, text: 'Договорённость не будет сохранена.' });
       input.logger?.info('commitment_rejected', {
@@ -135,10 +199,15 @@ export function createCommitmentActionCallbackHandler<TQueryResult extends PgQue
         result: 'success',
       });
     } catch (error: unknown) {
-      const isUnauthorized = error instanceof SuggestionActionAuthorizationError && error.code === 'UNAUTHORIZED';
+      const isUnauthorized =
+        (error instanceof SuggestionActionAuthorizationError && error.code === 'UNAUTHORIZED') ||
+        (error instanceof CommitmentUpdateError && error.code === 'UNAUTHORIZED');
       const isExpectedUnavailable =
         error instanceof CallbackDataError ||
+        error instanceof CallbackTokenError ||
         error instanceof SuggestionActionError ||
+        error instanceof CommitmentUpdateError ||
+        error instanceof CommitmentRescheduleError ||
         (error instanceof SuggestionActionAuthorizationError && error.code === 'SUGGESTION_UNAVAILABLE');
       if (isUnauthorized || isExpectedUnavailable) {
         await messenger.answerCallbackQuery({

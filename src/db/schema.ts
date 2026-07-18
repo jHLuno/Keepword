@@ -270,6 +270,78 @@ export const commitmentSources = pgTable(
   ],
 );
 
+export const callbackTokens = pgTable(
+  'callback_tokens',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    action: text('action').notNull(),
+    nonceHash: text('nonce_hash').notNull(),
+    suggestionId: uuid('suggestion_id'),
+    commitmentId: uuid('commitment_id'),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique('callback_tokens_nonce_hash_unique').on(table.nonceHash),
+    index('callback_tokens_action_expiry_idx').on(table.action, table.expiresAt),
+    foreignKey({
+      name: 'callback_tokens_suggestion_fkey',
+      columns: [table.suggestionId],
+      foreignColumns: [commitmentSuggestions.id],
+    }).onDelete('cascade'),
+    foreignKey({
+      name: 'callback_tokens_commitment_fkey',
+      columns: [table.commitmentId],
+      foreignColumns: [commitments.id],
+    }).onDelete('cascade'),
+  ],
+);
+
+export const suggestionEditSessions = pgTable(
+  'suggestion_edit_sessions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    suggestionId: uuid('suggestion_id').notNull(),
+    actorUserId: uuid('actor_user_id').notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    usedAt: timestamp('used_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('suggestion_edit_sessions_actor_expiry_idx').on(table.actorUserId, table.expiresAt),
+    foreignKey({
+      name: 'suggestion_edit_sessions_suggestion_fkey',
+      columns: [table.suggestionId],
+      foreignColumns: [commitmentSuggestions.id],
+    }).onDelete('cascade'),
+    foreignKey({
+      name: 'suggestion_edit_sessions_actor_fkey',
+      columns: [table.actorUserId],
+      foreignColumns: [users.id],
+    }).onDelete('cascade'),
+  ],
+);
+
+export const commitmentRescheduleSessions = pgTable(
+  'commitment_reschedule_sessions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    commitmentId: uuid('commitment_id').notNull(),
+    actorTelegramUserId: bigint('actor_telegram_user_id', { mode: 'number' }).notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    usedAt: timestamp('used_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('commitment_reschedule_sessions_actor_expiry_idx').on(table.actorTelegramUserId, table.expiresAt),
+    foreignKey({
+      name: 'commitment_reschedule_sessions_commitment_fkey',
+      columns: [table.commitmentId],
+      foreignColumns: [commitments.id],
+    }).onDelete('cascade'),
+  ],
+);
+
 export const onboardingTokens = pgTable(
   'onboarding_tokens',
   {

@@ -10,6 +10,7 @@ import { createUsersRepository } from '../repositories/users.js';
 import { renderSuggestion, type InlineKeyboardMarkup } from '../telegram/messages.js';
 
 import { createSuggestion } from './create-suggestion.js';
+import { createCallbackTokenService } from './callback-tokens.js';
 
 const clarificationText = 'Похоже, это договорённость. Кто отвечает и к какому сроку?';
 
@@ -79,6 +80,7 @@ export function createAnalyzeGroupMessage<TQueryResult extends PgQueryResultHKT>
   const messages = createMessagesRepository(database);
   const users = createUsersRepository(database);
   const createPendingSuggestion = createSuggestion(database);
+  const callbackTokens = createCallbackTokenService(database);
 
   return async (input) => {
     const activeMessenger = input.messenger ?? messenger;
@@ -178,11 +180,23 @@ export function createAnalyzeGroupMessage<TQueryResult extends PgQueryResultHKT>
       messageId: sourceMessage.id,
       workspaceId: chat.workspaceId,
     });
+    const callbackNonces = await callbackTokens.issueSuggestionCallbacks({
+      actions: ['confirm', 'edit', 'reject'],
+      suggestionId: createdSuggestion.id,
+    });
+    if (!callbackNonces.confirm || !callbackNonces.edit || !callbackNonces.reject) {
+      throw new Error('Suggestion callback nonce creation was incomplete');
+    }
     const card = renderSuggestion(
       {
         dueDateText: candidate.due_date_text,
         id: createdSuggestion.id,
         title: candidate.title,
+      },
+      {
+        confirm: callbackNonces.confirm,
+        edit: callbackNonces.edit,
+        reject: callbackNonces.reject,
       },
       callbackSigningSecret,
     );

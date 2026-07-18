@@ -99,9 +99,9 @@ describe('suggestions', () => {
     ]);
     expect(replies[0]?.replyMarkup.inline_keyboard.flat().map((button) => button.callback_data)).toEqual(
       expect.arrayContaining([
-        expect.stringMatching(/^kw:confirm:[0-9a-f-]{36}:[A-Za-z0-9_-]{16}$/),
-        expect.stringMatching(/^kw:edit:[0-9a-f-]{36}:[A-Za-z0-9_-]{16}$/),
-        expect.stringMatching(/^kw:reject:[0-9a-f-]{36}:[A-Za-z0-9_-]{16}$/),
+        expect.stringMatching(/^kw:confirm:[A-Za-z0-9_-]{16,32}:[A-Za-z0-9_-]{16}$/),
+        expect.stringMatching(/^kw:edit:[A-Za-z0-9_-]{16,32}:[A-Za-z0-9_-]{16}$/),
+        expect.stringMatching(/^kw:reject:[A-Za-z0-9_-]{16,32}:[A-Za-z0-9_-]{16}$/),
       ]),
     );
     expect(await countSuggestions()).toBe(1);

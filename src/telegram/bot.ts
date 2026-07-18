@@ -3,6 +3,7 @@ import type { Update } from 'grammy/types';
 
 import type { GroupMessenger, GroupUpdateHandler, OnboardingCard } from './handlers/group.js';
 import type { CallbackMessenger, CommitmentActionCallbackHandler } from './handlers/callback.js';
+import type { PrivateMessenger, PrivateUpdateHandler } from './handlers/private.js';
 
 export type TelegramUpdate = Readonly<{
   payload: unknown;
@@ -16,6 +17,7 @@ export type TelegramAdapter = Readonly<{
 export type TelegramAdapterFactory = (
   groupUpdateHandler: GroupUpdateHandler,
   callbackUpdateHandler?: CommitmentActionCallbackHandler,
+  privateUpdateHandler?: PrivateUpdateHandler,
 ) => TelegramAdapter;
 
 function createGrammYMessenger(context: Context): GroupMessenger {
@@ -60,9 +62,23 @@ function createGrammYCallbackMessenger(context: Context): CallbackMessenger {
   };
 }
 
+function createGrammYPrivateMessenger(context: Context): PrivateMessenger {
+  return {
+    async isCurrentChatAdmin(input) {
+      const member = await context.api.getChatMember(Number(input.telegramChatId), input.telegramUserId);
+      return member.status === 'administrator' || member.status === 'creator';
+    },
+
+    async sendPrivateMessage(input) {
+      await context.api.sendMessage(input.telegramUserId, input.text);
+    },
+  };
+}
+
 export function createTelegramBot(input: Readonly<{
   callbackUpdateHandler?: CommitmentActionCallbackHandler;
   groupUpdateHandler: GroupUpdateHandler;
+  privateUpdateHandler?: PrivateUpdateHandler;
   token: string;
 }>): TelegramAdapter {
   const bot = new Bot<Context>(input.token);
@@ -75,6 +91,13 @@ export function createTelegramBot(input: Readonly<{
   });
 
   bot.on('message', async (context) => {
+    if (context.chat?.type === 'private' && input.privateUpdateHandler) {
+      await input.privateUpdateHandler(
+        { payload: context.update, updateId: context.update.update_id },
+        createGrammYPrivateMessenger(context),
+      );
+      return;
+    }
     await input.groupUpdateHandler(
       { payload: context.update, updateId: context.update.update_id },
       createGrammYMessenger(context),
