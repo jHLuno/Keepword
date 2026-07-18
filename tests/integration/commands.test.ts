@@ -240,23 +240,57 @@ describe('Telegram commands', () => {
     expect(next.callback_data).toMatch(/^kw:check_page:[A-Za-z0-9_-]{16,32}:[A-Za-z0-9_-]{16}$/);
 
     const edited: Array<Readonly<{ replyMarkup?: { inline_keyboard: { callback_data: string; text: string }[][] }; text: string }>> = [];
-    const callbackHandler = createCommitmentActionCallbackHandler({ callbackSigningSecret: 'check-test-secret', database: database.db });
-    await callbackHandler({
-      payload: { callback_query: {
-        data: next.callback_data,
-        from: { first_name: 'Actor', id: actorTelegramUserId },
-        id: 'check-next',
-        message: { chat: { id: actorTelegramUserId, type: 'private' }, message_id: 1 },
-      } },
-      updateId: 9840,
-    }, {
-      answerCallbackQuery: () => Promise.resolve(),
-      editPrivateCheckMessage(input) {
-        edited.push(input);
-        return Promise.resolve();
-      },
+    const answers: string[] = [];
+    const unrelatedParticipantTelegramUserId = 9842;
+    const unrelatedParticipant = (await database.db.insert(users).values({
+      firstName: 'Unrelated participant', telegramUserId: unrelatedParticipantTelegramUserId,
+    }).returning())[0];
+    if (!unrelatedParticipant) throw new Error('Expected unrelated participant');
+    await database.db.insert(chatMemberships).values({
+      chatId: firstChat.chatId,
+      userId: unrelatedParticipant.id,
+      workspaceId: firstChat.workspaceId,
     });
+    const otherSourceAdminTelegramUserId = 9843;
+    await createConnectChat(database.db)({
+      adminTelegramUserId: String(otherSourceAdminTelegramUserId),
+      telegramChatId: '-1009842',
+      timezone: 'UTC',
+      title: 'Unrelated source',
+    });
+    const callbackHandler = createCommitmentActionCallbackHandler({ callbackSigningSecret: 'check-test-secret', database: database.db });
+    const openCheckPage = async (telegramUserId: number, id: string): Promise<void> => {
+      await callbackHandler({
+        payload: { callback_query: {
+          data: next.callback_data,
+          from: { first_name: 'Member', id: telegramUserId },
+          id,
+          message: { chat: { id: telegramUserId, type: 'private' }, message_id: 1 },
+        } },
+        updateId: telegramUserId,
+      }, {
+        answerCallbackQuery: ({ text }) => {
+          answers.push(text);
+          return Promise.resolve();
+        },
+        editPrivateCheckMessage(input) {
+          edited.push(input);
+          return Promise.resolve();
+        },
+      });
+    };
 
+    await openCheckPage(unrelatedParticipantTelegramUserId, 'check-next-unrelated-participant');
+    await openCheckPage(otherSourceAdminTelegramUserId, 'check-next-other-source-admin');
+
+    expect(edited).toEqual([]);
+    expect(answers).toEqual([
+      'У вас нет прав на это действие.',
+      'У вас нет прав на это действие.',
+    ]);
+
+    await openCheckPage(actorTelegramUserId, 'check-next');
+    expect(answers.at(-1)).toBe('Страница обновлена.');
     const secondPage = edited[0];
     if (!secondPage?.replyMarkup) throw new Error('Expected actionable second page');
     expect(secondPage?.text).toContain('Task 6');
