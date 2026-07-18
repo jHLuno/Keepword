@@ -48,7 +48,10 @@ function formatMessage(message: ExtractionMessage): Record<string, string> {
   };
 }
 
-function createExtractionRequest(input: ExtractionInput): Parameters<OpenAI['responses']['parse']>[0] {
+function createExtractionRequest(
+  input: ExtractionInput,
+  context: readonly ExtractionMessage[],
+): Parameters<OpenAI['responses']['parse']>[0] {
   return {
     model: defaultModel,
     input: [
@@ -57,7 +60,7 @@ function createExtractionRequest(input: ExtractionInput): Parameters<OpenAI['res
         role: 'user',
         content: JSON.stringify({
           message_under_review_id: input.message.id,
-          messages: selectBoundedChatContext(input).map(formatMessage),
+          messages: context.map(formatMessage),
         }),
       },
     ],
@@ -71,6 +74,15 @@ export type CommitmentExtractor = Readonly<{
   extractCandidate: (input: ExtractionInput) => Promise<CommitmentCandidate>;
 }>;
 
+function hasOnlySelectedSourceMessageIds(
+  candidate: CommitmentCandidate,
+  context: readonly ExtractionMessage[],
+): boolean {
+  const contextMessageIds = new Set(context.map((message) => message.id));
+
+  return candidate.source_message_ids.every((sourceMessageId) => contextMessageIds.has(sourceMessageId));
+}
+
 export function createCommitmentExtractor(
   openAi: OpenAiExtractionClient,
   options: ExtractorOptions = {},
@@ -78,7 +90,8 @@ export function createCommitmentExtractor(
   return {
     async extractCandidate(input) {
       const startedAt = Date.now();
-      const request = createExtractionRequest(input);
+      const context = selectBoundedChatContext(input);
+      const request = createExtractionRequest(input, context);
 
       if (options.model) {
         request.model = options.model;
@@ -95,6 +108,10 @@ export function createCommitmentExtractor(
 
         if (!parsedCandidate.success) {
           throw new AppError('EXTRACTION_FAILED', 'OpenAI returned an invalid commitment candidate');
+        }
+
+        if (!hasOnlySelectedSourceMessageIds(parsedCandidate.data, context)) {
+          throw new AppError('EXTRACTION_FAILED', 'OpenAI returned an unknown commitment source message ID');
         }
 
         options.logger?.info('llm_commitment_extraction_completed', {

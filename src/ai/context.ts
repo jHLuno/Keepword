@@ -1,6 +1,7 @@
 import type { ExtractionInput, ExtractionMessage } from '../domain/extraction.js';
 
 export const defaultContextMessageLimit = 5;
+export const maximumContextMessageLimit = 10;
 
 function compareMessagesBySentAt(left: ExtractionMessage, right: ExtractionMessage): number {
   const timeDifference = Date.parse(left.sentAt) - Date.parse(right.sentAt);
@@ -9,11 +10,15 @@ function compareMessagesBySentAt(left: ExtractionMessage, right: ExtractionMessa
 }
 
 function contextLimit(configuredLimit: number | undefined): number {
-  if (configuredLimit === undefined) {
+  if (
+    configuredLimit === undefined ||
+    !Number.isSafeInteger(configuredLimit) ||
+    configuredLimit < 1
+  ) {
     return defaultContextMessageLimit;
   }
 
-  return Math.max(1, Math.floor(configuredLimit));
+  return Math.min(configuredLimit, maximumContextMessageLimit);
 }
 
 export function selectBoundedChatContext(input: ExtractionInput): ExtractionMessage[] {

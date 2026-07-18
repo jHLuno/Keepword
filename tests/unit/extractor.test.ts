@@ -70,3 +70,10 @@ test('rejects an invalid AI response instead of inventing a candidate', async ()
 
   await expect(extractor.extractCandidate(input)).rejects.toMatchObject({ code: 'EXTRACTION_FAILED' });
 });
+
+test('rejects a candidate that references a source message outside selected context', async () => {
+  const openAi = createFakeOpenAi({ ...validCandidate, source_message_ids: ['unknown-message'] });
+  const extractor = createCommitmentExtractor(openAi);
+
+  await expect(extractor.extractCandidate(input)).rejects.toMatchObject({ code: 'EXTRACTION_FAILED' });
+});
