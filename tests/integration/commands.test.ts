@@ -152,6 +152,76 @@ describe('Telegram commands', () => {
     expect(reply).not.toContain('Inactive chat task');
   });
 
+  test('shows only the caller cross-chat reliability summary in private check', async () => {
+    const actorTelegramUserId = 9825;
+    const firstChat = await createConnectChat(database.db)({
+      adminTelegramUserId: String(actorTelegramUserId), telegramChatId: '-1009825', timezone: 'UTC', title: 'Reliability first',
+    });
+    const secondChat = await createConnectChat(database.db)({
+      adminTelegramUserId: String(actorTelegramUserId), telegramChatId: '-1009826', timezone: 'UTC', title: 'Reliability second',
+    });
+    const actor = (await database.db.select().from(users).where(eq(users.telegramUserId, actorTelegramUserId)).limit(1))[0];
+    if (!actor) throw new Error('Expected actor');
+    await database.db.update(users).set({ privateChatStartedAt: new Date() }).where(eq(users.id, actor.id));
+    await database.db.update(chatMemberships).set({ notificationsConnectedAt: new Date() }).where(eq(chatMemberships.userId, actor.id));
+    const teammate = (await database.db.insert(users).values({ firstName: 'Teammate reliability', telegramUserId: 9826 }).returning())[0];
+    if (!teammate) throw new Error('Expected teammate');
+    await database.db.insert(chatMemberships).values({
+      chatId: firstChat.chatId,
+      userId: teammate.id,
+      workspaceId: firstChat.workspaceId,
+    });
+    const now = Date.now();
+    await database.db.insert(commitments).values([
+      {
+        assigneeUserId: actor.id,
+        chatId: firstChat.chatId,
+        completedAt: new Date(now - 4 * 24 * 60 * 60 * 1_000),
+        dueAt: new Date(now - 3 * 24 * 60 * 60 * 1_000),
+        status: 'completed',
+        title: 'My on-time commitment',
+        workspaceId: firstChat.workspaceId,
+      },
+      {
+        assigneeUserId: actor.id,
+        chatId: secondChat.chatId,
+        completedAt: new Date(now - 4 * 24 * 60 * 60 * 1_000),
+        dueAt: new Date(now - 5 * 24 * 60 * 60 * 1_000),
+        status: 'completed',
+        title: 'My late commitment',
+        workspaceId: secondChat.workspaceId,
+      },
+      {
+        assigneeUserId: actor.id,
+        chatId: secondChat.chatId,
+        dueAt: new Date(now - 2 * 24 * 60 * 60 * 1_000),
+        status: 'open',
+        title: 'My overdue commitment',
+        workspaceId: secondChat.workspaceId,
+      },
+      ...Array.from({ length: 3 }, (_, index) => ({
+        assigneeUserId: teammate.id,
+        chatId: firstChat.chatId,
+        completedAt: new Date(now - (index + 4) * 24 * 60 * 60 * 1_000),
+        dueAt: new Date(now - (index + 3) * 24 * 60 * 60 * 1_000),
+        status: 'completed' as const,
+        title: `Teammate commitment ${index + 1}`,
+        workspaceId: firstChat.workspaceId,
+      })),
+    ]);
+    const handler = createPrivateUpdateHandler({ database: database.db });
+    const fakeTelegram = createFakeTelegram();
+
+    await fakeTelegram.telegramAdapterFactory(createNoopGroupHandler(), undefined, handler)
+      .handleUpdate(privateUpdate(actorTelegramUserId, '/check'));
+
+    const reply = fakeTelegram.privateMessages.at(-1) ?? '';
+    expect(reply).toContain('🤝 Моя надёжность · последние 30 дней');
+    expect(reply).toContain('Вовремя: 1/3 · С опозданием: 1 · Риск: 1');
+    expect(reply).not.toContain('Teammate reliability');
+    expect(reply).not.toContain('Teammate commitment');
+  });
+
   test('shows the check empty state when the onboarded user has no active commitments', async () => {
     const actorTelegramUserId = 9830;
     const chat = await createConnectChat(database.db)({

@@ -7,6 +7,7 @@ import type { Logger } from '../observability/logger.js';
 import type { RepositoryDatabase } from '../repositories/database.js';
 import { createCommitmentsRepository } from '../repositories/commitments.js';
 import { createCalibrationRepository } from '../repositories/calibration.js';
+import { createReliabilityRepository } from '../repositories/reliability.js';
 import {
   buildAdminDigest,
   buildUserDigest,
@@ -65,6 +66,7 @@ export function createDigestJob<TQueryResult extends PgQueryResultHKT>(input: Re
 }>): RunDigestJob {
   const sendDigest = createSendDigest(input);
   const calibrationRepository = createCalibrationRepository(input.database);
+  const reliabilityRepository = createReliabilityRepository(input.database);
   const commitmentsRepository = createCommitmentsRepository(input.database);
   return async (now) => {
     const activeChats = await input.database
@@ -93,7 +95,7 @@ export function createDigestJob<TQueryResult extends PgQueryResultHKT>(input: Re
       if (local.time < chat.dailyDigestTime) {
         continue;
       }
-      const [chatCommitments, recipients, reviewTitles, calibration] = await Promise.all([
+      const [chatCommitments, recipients, reviewTitles, calibration, reliability] = await Promise.all([
         input.database
           .select({
             assigneeUserId: commitments.assigneeUserId,
@@ -122,9 +124,15 @@ export function createDigestJob<TQueryResult extends PgQueryResultHKT>(input: Re
           now,
           workspaceId: chat.workspaceId,
         }),
+        reliabilityRepository.findChatReliability({
+          chatId: chat.id,
+          now,
+          workspaceId: chat.workspaceId,
+        }),
       ]);
       const digestInput = {
         ...(calibration ? { calibration } : {}),
+        ...(reliability.length > 0 ? { reliability } : {}),
         chatId: chat.id,
         commitments: chatCommitments as readonly DigestCommitment[],
         date: local.date,

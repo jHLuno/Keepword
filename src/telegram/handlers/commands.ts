@@ -4,6 +4,7 @@ import type { PgQueryResultHKT } from 'drizzle-orm/pg-core';
 import { chatMemberships, chats, commitments, users } from '../../db/schema.js';
 import type { RepositoryDatabase } from '../../repositories/database.js';
 import { createCallbackTokenService } from '../../services/callback-tokens.js';
+import { createReliabilityRepository } from '../../repositories/reliability.js';
 import { createSignedCallback } from '../callback-data.js';
 import { renderPrivateCheck, type InlineKeyboardMarkup, type PrivateCheckItem } from '../messages.js';
 
@@ -116,7 +117,10 @@ export function createPrivateCommandHandler<TQueryResult extends PgQueryResultHK
     if (!Number.isSafeInteger(input.page) || input.page < 0 || !await hasCompletedNotificationOnboarding(input.telegramUserId)) {
       return { handled: true, text: 'Сначала подключите уведомления через ссылку из нужной группы.' };
     }
-    const rows = await database
+    const now = new Date();
+    const reliabilityRepository = createReliabilityRepository(database);
+    const [rows, reliability] = await Promise.all([
+      database
       .select({
         chatTitle: chats.title,
         dueDateText: commitments.dueDateText,
@@ -143,10 +147,12 @@ export function createPrivateCommandHandler<TQueryResult extends PgQueryResultHK
       )
       .orderBy(asc(commitments.dueAt), asc(commitments.createdAt))
       .limit(checkPageSize + 1)
-      .offset(input.page * checkPageSize);
+      .offset(input.page * checkPageSize),
+      reliabilityRepository.findUserCrossChatReliability({ now, telegramUserId: input.telegramUserId }),
+    ]);
     const pageRows = rows.slice(0, checkPageSize) as readonly CheckRow[];
     if (pageRows.length === 0) {
-      return { handled: true, ...renderPrivateCheck({ items: [] }) };
+      return { handled: true, ...renderPrivateCheck({ items: [], reliability }) };
     }
     const items: PrivateCheckItem[] = pageRows.map((row) => ({
       chatTitle: row.chatTitle,
@@ -155,7 +161,7 @@ export function createPrivateCommandHandler<TQueryResult extends PgQueryResultHK
       title: row.title,
     }));
     if (!callbackSigningSecret) {
-      return { handled: true, ...renderPrivateCheck({ items }) };
+      return { handled: true, ...renderPrivateCheck({ items, reliability }) };
     }
     const callbackTokens = createCallbackTokenService(database);
     for (const [index, row] of pageRows.entries()) {
@@ -192,7 +198,7 @@ export function createPrivateCommandHandler<TQueryResult extends PgQueryResultHK
         callbackSigningSecret,
       )
       : undefined;
-    return { handled: true, ...renderPrivateCheck({ items, nextPageCallback, previousPageCallback }) };
+    return { handled: true, ...renderPrivateCheck({ items, nextPageCallback, previousPageCallback, reliability }) };
   }
 
   return {

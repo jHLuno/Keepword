@@ -3,6 +3,7 @@ import type { PgQueryResultHKT } from 'drizzle-orm/pg-core';
 import type { Logger } from '../observability/logger.js';
 import type { RepositoryDatabase } from '../repositories/database.js';
 import type { CalibrationSummary } from '../repositories/calibration.js';
+import type { ReliabilityLine } from '../repositories/reliability.js';
 import { createDeliveriesRepository, type DeliveriesRepository } from '../repositories/deliveries.js';
 
 export type DigestAttention = 'due-today' | 'due-tomorrow' | 'no-deadline' | 'overdue';
@@ -40,6 +41,7 @@ export type TeamRiskSummary = Readonly<{
   overdue: number;
   riskTitles: readonly string[];
   reviewTitles: readonly string[];
+  reliability?: readonly ReliabilityLine[];
 }>;
 
 export type DigestMessenger = Readonly<{
@@ -62,6 +64,7 @@ type DigestBuildInput = Readonly<{
   commitments: readonly DigestCommitment[];
   date: string;
   reviewTitles?: readonly string[];
+  reliability?: readonly ReliabilityLine[];
   timezone: string;
 }>;
 
@@ -155,6 +158,7 @@ export function buildAdminDigest(input: DigestBuildInput): TeamRiskSummary {
   return {
     ...counts(input),
     ...(input.calibration ? { calibration: input.calibration } : {}),
+    ...(input.reliability && input.reliability.length > 0 ? { reliability: input.reliability } : {}),
     riskTitles: input.commitments.flatMap((commitment) => {
       if (!isActive(commitment) || isOverdue(commitment, input) || !commitment.dueAt) {
         return isActive(commitment) ? [commitment.title] : [];

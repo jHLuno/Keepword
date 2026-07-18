@@ -1,5 +1,6 @@
 import { createSignedCallback } from './callback-data.js';
 import type { DigestSummary, TeamRiskSummary } from '../services/send-digest.js';
+import type { ReliabilitySummary } from '../repositories/reliability.js';
 
 export type InlineKeyboardMarkup = Readonly<{
   inline_keyboard: InlineKeyboardButton[][];
@@ -140,6 +141,7 @@ export function renderPrivateCheck(input: Readonly<{
   items: readonly PrivateCheckItem[];
   nextPageCallback?: string | undefined;
   previousPageCallback?: string | undefined;
+  reliability?: ReliabilitySummary | null;
 }>): Readonly<{ replyMarkup?: InlineKeyboardMarkup; text: string }> {
   const sections: ReadonlyArray<Readonly<{ heading: string; status: PrivateCheckItem['status'] }>> = [
     { heading: '🔴 Просрочены', status: 'overdue' },
@@ -153,7 +155,17 @@ export function renderPrivateCheck(input: Readonly<{
     }
     return [`${heading}\n${tasks.map((task) => `— [${task.chatTitle}] ${task.title}${task.dueDateText ? ` · ${task.dueDateText}` : ''}`).join('\n')}`];
   });
-  const text = `📋 Мои обязательства\n\n${renderedSections.length === 0 ? '— активных обязательств нет' : renderedSections.join('\n\n')}`;
+  const reliability = input.reliability
+    ? [
+      '🤝 Моя надёжность · последние 30 дней',
+      `Вовремя: ${input.reliability.onTime}/${input.reliability.eligible} · С опозданием: ${input.reliability.late} · Риск: ${input.reliability.overdue}`,
+    ].join('\n')
+    : null;
+  const content = [
+    renderedSections.length === 0 ? '— активных обязательств нет' : renderedSections.join('\n\n'),
+    reliability,
+  ].filter((section): section is string => Boolean(section)).join('\n\n');
+  const text = `📋 Мои обязательства\n\n${content}`;
   if (input.items.length === 0) {
     return { text };
   }
@@ -242,6 +254,15 @@ export function renderAdminDigest(summary: TeamRiskSummary): string {
       `Отклонено: ${summary.calibration.rejected} (${Math.round(summary.calibration.rejected / summary.calibration.resolved * 100)}%)`,
     ]
     : [];
+  const reliability = summary.reliability && summary.reliability.length > 0
+    ? [
+      '',
+      '🤝 Надёжность · последние 30 дней',
+      ...summary.reliability.map((line) =>
+        `— ${line.firstName}: ${line.onTime}/${line.eligible} вовремя · ${line.late} с опозданием · ${line.overdue} риск`,
+      ),
+    ]
+    : [];
   return [
     '📊 Риски команды',
     '',
@@ -256,5 +277,6 @@ export function renderAdminDigest(summary: TeamRiskSummary): string {
     'На проверку:',
     review,
     ...calibration,
+    ...reliability,
   ].join('\n');
 }

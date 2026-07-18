@@ -3,6 +3,22 @@
 ## 2026-07-19 — Handoff
 
 ### Done
+- Added privacy-safe reliability aggregates for exact source chat/workspace pairs: on-time, late, and overdue in a 30-day deadline window.
+- Current source-chat admins receive only that chat's per-person rows after the three-commitment threshold.
+- `/check` adds only the caller's own aggregate across their personally connected active chats; it never shows a colleague's metric.
+
+### Not done
+- Railway/staging migration and Telegram smoke verification remain task 5; no production database was changed.
+
+### Risks / blockers
+- Repository-wide `pnpm lint` remains blocked by the pre-existing untracked `landing/dist` generated output, which this change did not modify.
+
+### Next recommended step
+- Complete task 5: release verification, migration checks, and Railway/Telgram smoke checklist.
+
+## 2026-07-19 — Handoff
+
+### Done
 - Added a private calibration section to the admin digest after 30 resolved decisions within a rolling 90-day window.
 - Calibration derives only from immutable `suggestion_events` scoped by both `workspace_id` and `chat_id`; it never reads message snapshots.
 - Confirmed-without-edits, confirmed-after-edits, and rejected signals are isolated per source group.

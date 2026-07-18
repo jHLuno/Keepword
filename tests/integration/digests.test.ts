@@ -97,7 +97,7 @@ async function addCommitment(input: Readonly<{
   chatId: string;
   completedAt?: Date;
   dueAt?: Date;
-  status?: 'completed' | 'open' | 'overdue';
+  status?: 'blocked' | 'cancelled' | 'completed' | 'open' | 'overdue';
   title: string;
   workspaceId: string;
 }>): Promise<string> {
@@ -304,6 +304,95 @@ describe('daily digests', () => {
     expect(adminDigest).toContain('Без срока');
     expect(adminDigest).not.toContain('Connected');
     expect(adminDigest).not.toContain('Not connected');
+  });
+
+  test('renders each source chat reliability only for a current admin and excludes ineligible commitments', async () => {
+    const fixture = await createFixture();
+    await enableAdminDigest(fixture);
+    const otherChat = await addSameWorkspaceChat(fixture);
+    await database.db.insert(chatMemberships).values({
+      chatId: otherChat.chatId,
+      userId: fixture.userA.id,
+      workspaceId: otherChat.workspaceId,
+    });
+    const now = new Date('2026-07-18T13:00:00.000Z');
+    await Promise.all([
+      addCommitment({
+        assigneeUserId: fixture.userA.id,
+        chatId: fixture.chatId,
+        completedAt: new Date('2026-07-10T12:00:00.000Z'),
+        dueAt: new Date('2026-07-10T12:00:00.000Z'),
+        status: 'completed',
+        title: 'On time in first chat',
+        workspaceId: fixture.workspaceId,
+      }),
+      addCommitment({
+        assigneeUserId: fixture.userA.id,
+        chatId: fixture.chatId,
+        completedAt: new Date('2026-07-11T13:00:00.000Z'),
+        dueAt: new Date('2026-07-11T12:00:00.000Z'),
+        status: 'completed',
+        title: 'Late in first chat',
+        workspaceId: fixture.workspaceId,
+      }),
+      addCommitment({
+        assigneeUserId: fixture.userA.id,
+        chatId: fixture.chatId,
+        dueAt: new Date('2026-07-12T12:00:00.000Z'),
+        status: 'open',
+        title: 'Overdue in first chat',
+        workspaceId: fixture.workspaceId,
+      }),
+      addCommitment({
+        assigneeUserId: fixture.userA.id,
+        chatId: fixture.chatId,
+        dueAt: new Date('2026-07-13T12:00:00.000Z'),
+        status: 'cancelled',
+        title: 'Cancelled in first chat',
+        workspaceId: fixture.workspaceId,
+      }),
+      addCommitment({
+        assigneeUserId: fixture.userA.id,
+        chatId: fixture.chatId,
+        status: 'open',
+        title: 'No deadline in first chat',
+        workspaceId: fixture.workspaceId,
+      }),
+      addCommitment({
+        assigneeUserId: fixture.userA.id,
+        chatId: fixture.chatId,
+        completedAt: new Date('2026-06-18T12:59:58.000Z'),
+        dueAt: new Date('2026-06-18T12:59:59.000Z'),
+        status: 'completed',
+        title: 'Outside 30 days',
+        workspaceId: fixture.workspaceId,
+      }),
+      ...Array.from({ length: 3 }, (_, index) => addCommitment({
+        assigneeUserId: fixture.userA.id,
+        chatId: otherChat.chatId,
+        completedAt: new Date(`2026-07-${14 + index}T11:00:00.000Z`),
+        dueAt: new Date(`2026-07-${14 + index}T12:00:00.000Z`),
+        status: 'completed',
+        title: `Other chat ${index + 1}`,
+        workspaceId: otherChat.workspaceId,
+      })),
+    ]);
+    const runDigestJob = createDigestJob({
+      database: database.db,
+      isCurrentChatAdmin: ({ telegramChatId }) => Promise.resolve(telegramChatId === String(nextTelegramChatId - 1)),
+      messenger: fixture.telegram,
+    });
+
+    await runDigestJob(now);
+
+    const adminDigests = fixture.telegram.privateMessagesFor(fixture.owner.telegramUserId)
+      .filter((message) => message.includes('📊 Риски команды'));
+    expect(adminDigests).toHaveLength(1);
+    expect(adminDigests[0]).toContain('🤝 Надёжность · последние 30 дней');
+    expect(adminDigests[0]).toContain('Aigerim: 1/3 вовремя · 1 с опозданием · 1 риск');
+    expect(adminDigests[0]).not.toContain('4/6 вовремя');
+    expect(adminDigests[0]).not.toContain('Other chat 1');
+    expect(adminDigests[0]).not.toContain('Cancelled in first chat');
   });
 
   test('renders chat-scoped calibration only in the matching admin digest', async () => {
