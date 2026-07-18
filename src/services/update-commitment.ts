@@ -12,7 +12,7 @@ const allowedTransitions: Readonly<Record<CommitmentStatus, readonly CommitmentS
   cancelled: [],
   completed: [],
   open: ['completed', 'overdue', 'cancelled', 'blocked'],
-  overdue: [],
+  overdue: ['completed', 'cancelled', 'blocked'],
 };
 
 export class CommitmentUpdateError extends Error {

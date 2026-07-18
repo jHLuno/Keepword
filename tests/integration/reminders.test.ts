@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 
 import { chatMemberships, commitments, notificationDeliveries, users } from '../../src/db/schema.js';
 import { createReminderJob } from '../../src/jobs/reminders.js';
+import { createDeliveriesRepository } from '../../src/repositories/deliveries.js';
 import { createConnectChat } from '../../src/services/connect-chat.js';
 import { createFakeTelegram } from '../helpers/fake-telegram.js';
 import { createPgliteTestDatabase, type PgliteTestDatabase } from '../helpers/pglite.js';
@@ -16,7 +17,6 @@ type Fixture = Readonly<{
   commitmentId: string;
   dueAt: Date;
   telegram: ReturnType<typeof createFakeTelegram>;
-  workspaceId: string;
 }>;
 
 async function createFixture(input: Readonly<{
@@ -74,7 +74,6 @@ async function createFixture(input: Readonly<{
     commitmentId: commitment.id,
     dueAt: input.dueAt,
     telegram: createFakeTelegram(),
-    workspaceId: chat.workspaceId,
   };
 }
 
@@ -159,5 +158,32 @@ describe('private commitment reminders', () => {
     expect(messages).toHaveLength(1);
     expect((await database.db.select().from(notificationDeliveries).where(eq(notificationDeliveries.commitmentId, fixture.commitmentId)))[0])
       .toMatchObject({ status: 'sent', errorCode: null });
+  });
+
+  test('does not retry after Telegram succeeds when marking delivery sent fails', async () => {
+    const dueNow = new Date('2026-07-18T15:00:00.000Z');
+    const fixture = await createFixture({ dueAt: dueNow });
+    const deliveries = createDeliveriesRepository(database.db);
+    let telegramSends = 0;
+    const failingPersistenceConfig = {
+      callbackSigningSecret: 'callback-test-secret',
+      database: database.db,
+      deliveries: { ...deliveries, markSent: () => Promise.reject(new Error('Database persistence failed')) },
+      messenger: { sendPrivateMessage: () => { telegramSends += 1; return Promise.resolve(); } },
+    };
+    const sendWithFailedPersistence = createReminderJob(failingPersistenceConfig);
+
+    await sendWithFailedPersistence(dueNow);
+    expect(telegramSends).toBe(1);
+    expect((await database.db.select().from(notificationDeliveries).where(eq(notificationDeliveries.commitmentId, fixture.commitmentId)))[0])
+      .toMatchObject({ errorCode: null, status: 'processing' });
+
+    const retry = createReminderJob({
+      callbackSigningSecret: 'callback-test-secret',
+      database: database.db,
+      messenger: { sendPrivateMessage: () => { telegramSends += 1; return Promise.resolve(); } },
+    });
+    await retry(dueNow);
+    expect(telegramSends).toBe(1);
   });
 });

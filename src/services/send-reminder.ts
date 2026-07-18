@@ -1,7 +1,7 @@
 import type { PgQueryResultHKT } from 'drizzle-orm/pg-core';
 
 import type { Logger } from '../observability/logger.js';
-import { createDeliveriesRepository } from '../repositories/deliveries.js';
+import { createDeliveriesRepository, type DeliveriesRepository } from '../repositories/deliveries.js';
 import type { RepositoryDatabase } from '../repositories/database.js';
 import { createCallbackTokenService } from './callback-tokens.js';
 import { renderReminderCard, type InlineKeyboardMarkup } from '../telegram/messages.js';
@@ -25,15 +25,16 @@ export type SendReminder = (input: Readonly<{
   status: 'open' | 'overdue';
   title: string;
   workspaceId: string;
-}>) => Promise<'already-sent' | 'failed' | 'in-progress' | 'sent'>;
+}>) => Promise<'already-sent' | 'delivery-uncertain' | 'failed' | 'in-progress' | 'sent'>;
 
 export function createSendReminder<TQueryResult extends PgQueryResultHKT>(input: Readonly<{
   callbackSigningSecret: string;
   database: RepositoryDatabase<TQueryResult>;
+  deliveries?: DeliveriesRepository;
   logger?: Logger;
   messenger: ReminderMessenger;
 }>): SendReminder {
-  const deliveries = createDeliveriesRepository(input.database);
+  const deliveries = input.deliveries ?? createDeliveriesRepository(input.database);
   const callbacks = createCallbackTokenService(input.database);
 
   return async (reminder) => {
@@ -71,14 +72,6 @@ export function createSendReminder<TQueryResult extends PgQueryResultHKT>(input:
         telegramUserId: reminder.assigneeTelegramUserId,
         text: card.text,
       });
-      await deliveries.markSent(reminder.idempotencyKey);
-      input.logger?.info('reminder_sent', {
-        commitmentId: reminder.commitmentId,
-        result: 'success',
-        telegramUserId: String(reminder.assigneeTelegramUserId),
-        workspaceId: reminder.workspaceId,
-      });
-      return 'sent';
     } catch {
       await deliveries.recordFailure(reminder.idempotencyKey, 'TELEGRAM_SEND_FAILED');
       input.logger?.error('reminder_delivery_failed', {
@@ -90,5 +83,24 @@ export function createSendReminder<TQueryResult extends PgQueryResultHKT>(input:
       });
       return 'failed';
     }
+    try {
+      await deliveries.markSent(reminder.idempotencyKey);
+    } catch {
+      input.logger?.error('reminder_delivery_reconciliation_needed', {
+        commitmentId: reminder.commitmentId,
+        errorCode: 'DELIVERY_SENT_STATE_UNCONFIRMED',
+        result: 'failure',
+        telegramUserId: String(reminder.assigneeTelegramUserId),
+        workspaceId: reminder.workspaceId,
+      });
+      return 'delivery-uncertain';
+    }
+    input.logger?.info('reminder_sent', {
+      commitmentId: reminder.commitmentId,
+      result: 'success',
+      telegramUserId: String(reminder.assigneeTelegramUserId),
+      workspaceId: reminder.workspaceId,
+    });
+    return 'sent';
   };
 }

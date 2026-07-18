@@ -149,6 +149,21 @@ describe('commitment status actions', () => {
       .rejects.toMatchObject({ code: 'INVALID_STATUS_TRANSITION' });
   });
 
+  test('allows complete, block, and cancel actions from an overdue reminder card', async () => {
+    const updateCommitment = createUpdateCommitment(database.db);
+    const completed = await createOpenCommitment();
+    const blocked = await createOpenCommitment();
+    const cancelled = await createOpenCommitment();
+
+    await updateCommitment({ ...completed, status: 'overdue' });
+    await updateCommitment({ ...blocked, status: 'overdue' });
+    await updateCommitment({ ...cancelled, status: 'overdue' });
+
+    await expect(updateCommitment({ ...completed, status: 'completed' })).resolves.toMatchObject({ status: 'completed' });
+    await expect(updateCommitment({ ...blocked, status: 'blocked' })).resolves.toMatchObject({ status: 'blocked' });
+    await expect(updateCommitment({ ...cancelled, status: 'cancelled' })).resolves.toMatchObject({ status: 'cancelled' });
+  });
+
   test('authorizes an assignee status action from the private reminder card', async () => {
     const fixture = await createOpenCommitment();
     const nonce = (await createCallbackTokenService(database.db).issueCommitmentCallbacks({
