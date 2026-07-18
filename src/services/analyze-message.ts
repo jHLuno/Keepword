@@ -27,6 +27,7 @@ export type GroupMessageForAnalysis = Readonly<{
   telegramMessageId: string;
   text: string;
   defaultAssigneeTelegramUserId?: number;
+  manualCapture?: boolean;
 }>;
 
 export type SuggestionReply = Readonly<{
@@ -99,7 +100,10 @@ export function createAnalyzeGroupMessage<TQueryResult extends PgQueryResultHKT>
     }
 
     const chat = await messages.findActiveChatByTelegramChatId(telegramChatId);
-    if (!chat || chat.mode !== 'suggest') {
+    if (!chat || (chat.mode !== 'suggest' && chat.mode !== 'manual' && chat.mode !== 'silent_digest')) {
+      return 'skipped';
+    }
+    if (chat.mode === 'manual' && !input.manualCapture) {
       return 'skipped';
     }
 
@@ -188,6 +192,16 @@ export function createAnalyzeGroupMessage<TQueryResult extends PgQueryResultHKT>
       messageId: sourceMessage.id,
       workspaceId: chat.workspaceId,
     });
+    if (chat.mode === 'silent_digest') {
+      logger?.info('commitment_suggestion_created', {
+        commitmentId: createdSuggestion.id,
+        messageId: sourceMessage.id,
+        result: 'silent_digest',
+        telegramChatId: input.telegramChatId,
+        workspaceId: chat.workspaceId,
+      });
+      return 'suggested';
+    }
     const notificationOnboarding = onboarding;
     if (
       activeMessenger?.sendNotificationInvite &&

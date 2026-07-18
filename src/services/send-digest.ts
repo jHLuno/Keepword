@@ -37,6 +37,7 @@ export type TeamRiskSummary = Readonly<{
   open: number;
   overdue: number;
   riskTitles: readonly string[];
+  reviewTitles: readonly string[];
 }>;
 
 export type DigestMessenger = Readonly<{
@@ -57,6 +58,7 @@ type DigestBuildInput = Readonly<{
   chatId: string;
   commitments: readonly DigestCommitment[];
   date: string;
+  reviewTitles?: readonly string[];
   timezone: string;
 }>;
 
@@ -155,6 +157,7 @@ export function buildAdminDigest(input: DigestBuildInput): TeamRiskSummary {
       }
       return [];
     }),
+    reviewTitles: input.reviewTitles ?? [],
   };
 }
 

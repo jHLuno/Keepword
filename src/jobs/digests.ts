@@ -5,6 +5,7 @@ import { chatMemberships, chats, commitments, users } from '../db/schema.js';
 import type { JobResult } from './reminders.js';
 import type { Logger } from '../observability/logger.js';
 import type { RepositoryDatabase } from '../repositories/database.js';
+import { createCommitmentsRepository } from '../repositories/commitments.js';
 import {
   buildAdminDigest,
   buildUserDigest,
@@ -60,6 +61,7 @@ export function createDigestJob<TQueryResult extends PgQueryResultHKT>(input: Re
   messenger: DigestMessenger;
 }>): RunDigestJob {
   const sendDigest = createSendDigest(input);
+  const commitmentsRepository = createCommitmentsRepository(input.database);
   return async (now) => {
     const activeChats = await input.database
       .select({
@@ -86,7 +88,7 @@ export function createDigestJob<TQueryResult extends PgQueryResultHKT>(input: Re
       if (local.time < chat.dailyDigestTime) {
         continue;
       }
-      const [chatCommitments, recipients] = await Promise.all([
+      const [chatCommitments, recipients, reviewTitles] = await Promise.all([
         input.database
           .select({
             assigneeUserId: commitments.assigneeUserId,
@@ -109,11 +111,13 @@ export function createDigestJob<TQueryResult extends PgQueryResultHKT>(input: Re
           .from(chatMemberships)
           .innerJoin(users, eq(chatMemberships.userId, users.id))
           .where(and(eq(chatMemberships.chatId, chat.id), eq(chatMemberships.workspaceId, chat.workspaceId))),
+        commitmentsRepository.findPendingSuggestionTitles({ chatId: chat.id, workspaceId: chat.workspaceId }),
       ]);
       const digestInput = {
         chatId: chat.id,
         commitments: chatCommitments as readonly DigestCommitment[],
         date: local.date,
+        reviewTitles,
         timezone: chat.timezone,
       };
       for (const recipient of recipients) {

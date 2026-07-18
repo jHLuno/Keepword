@@ -186,6 +186,9 @@ export function renderAdminDigest(summary: TeamRiskSummary): string {
   const risks = summary.riskTitles.length === 0
     ? '— рисков нет'
     : summary.riskTitles.map((title) => `— ${title}`).join('\n');
+  const review = summary.reviewTitles.length === 0
+    ? '— нет кандидатов'
+    : summary.reviewTitles.map((title) => `— ${title}`).join('\n');
   return [
     '📊 Риски команды',
     '',
@@ -196,5 +199,8 @@ export function renderAdminDigest(summary: TeamRiskSummary): string {
     '',
     'Задачи с риском:',
     risks,
+    '',
+    'На проверку:',
+    review,
   ].join('\n');
 }

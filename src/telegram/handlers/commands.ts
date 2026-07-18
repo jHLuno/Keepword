@@ -26,7 +26,7 @@ const privateHelpText = [
   '',
   '/tasks — мои задачи в подключённой группе',
   '/settings on|off [номер] — личные уведомления',
-  '/privacy — как обрабатываются данные',
+  '/privacy — как обрабатываются данные; удаление: /privacy delete в группе для текущего администратора',
   '',
   'Перешлите сообщение с обещанием — я предложу карточку для подтверждения.',
 ].join('\n');
@@ -93,7 +93,7 @@ export function createPrivateCommandHandler<TQueryResult extends PgQueryResultHK
       if (input.command.name === 'privacy') {
         return {
           handled: true,
-          text: 'Я обрабатываю только новые сообщения подключённых групп и храню источник для подтверждённой задачи. Для удаления данных текущий администратор отправляет /privacy в нужной группе.',
+          text: 'Я обрабатываю только новые сообщения подключённых групп и храню источник для подтверждённой задачи. Для удаления данных текущий администратор отправляет /privacy delete в нужной группе.',
         };
       }
       const chatsForUser = await connectedChats(input.telegramUserId);

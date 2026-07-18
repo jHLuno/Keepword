@@ -10,6 +10,8 @@ import { createLogger, type Logger } from './observability/logger.js';
 import type { RepositoryDatabase } from './repositories/database.js';
 import { createUpdatesRepository } from './repositories/updates.js';
 import { createConnectChat } from './services/connect-chat.js';
+import { createChatSettingsService } from './services/chat-settings.js';
+import { createDeleteChatData } from './services/delete-chat-data.js';
 import { createOnboardingInvitationService } from './services/onboarding-invitation.js';
 import { createOnboardingService } from './services/onboarding.js';
 import { createAnalyzeGroupMessage, type AnalyzeGroupMessage } from './services/analyze-message.js';
@@ -66,7 +68,9 @@ export function buildApp<TQueryResult extends PgQueryResultHKT>(
   const groupUpdateHandler = createGroupUpdateHandler({
     analyzeGroupMessage,
     botUsername: config.telegramBotUsername,
+    chatSettings: (isCurrentChatAdmin) => createChatSettingsService(dependencies.database, isCurrentChatAdmin),
     connectChat,
+    deleteChatData: (isCurrentChatAdmin) => createDeleteChatData(dependencies.database, isCurrentChatAdmin),
     onboardingInvitations,
     onboarding,
   });

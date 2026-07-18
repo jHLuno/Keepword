@@ -47,6 +47,7 @@ export type CommitmentsRepository = Readonly<{
     sourceMessageId: string;
     workspaceId: string;
   }>) => Promise<typeof commitmentSuggestions.$inferSelect | null>;
+  findPendingSuggestionTitles: (input: Readonly<{ chatId: string; workspaceId: string }>) => Promise<readonly string[]>;
 }>;
 
 export function createCommitmentsRepository<TQueryResult extends PgQueryResultHKT>(
@@ -146,6 +147,20 @@ export function createCommitmentsRepository<TQueryResult extends PgQueryResultHK
         .limit(1);
 
       return rows[0] ?? null;
+    },
+
+    async findPendingSuggestionTitles(input) {
+      const rows = await database
+        .select({ title: commitmentSuggestions.title })
+        .from(commitmentSuggestions)
+        .where(
+          and(
+            eq(commitmentSuggestions.workspaceId, input.workspaceId),
+            eq(commitmentSuggestions.chatId, input.chatId),
+            eq(commitmentSuggestions.status, 'pending'),
+          ),
+        );
+      return rows.map((row) => row.title);
     },
   };
 }

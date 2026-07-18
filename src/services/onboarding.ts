@@ -39,6 +39,7 @@ export type OnboardingService = Readonly<{
     id: string;
     telegramChatId: string;
     title: string;
+    workspaceId: string;
   }> | null>;
   notificationStatus: (chatId: string) => Promise<NotificationStatus>;
   notificationStatusForPrivateUser: (input: Readonly<{
@@ -263,7 +264,7 @@ export function createOnboardingService<TQueryResult extends PgQueryResultHKT>(
       }
       const chat = (
         await database
-          .select({ id: chats.id, telegramChatId: chats.telegramChatId, title: chats.title })
+        .select({ id: chats.id, telegramChatId: chats.telegramChatId, title: chats.title, workspaceId: chats.workspaceId })
           .from(chats)
           .where(and(eq(chats.telegramChatId, parsedTelegramChatId), eq(chats.isActive, true)))
           .limit(1)

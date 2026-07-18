@@ -9,6 +9,8 @@ import type { ConnectChat } from '../../services/connect-chat.js';
 import type { OnboardingInvitationService } from '../../services/onboarding-invitation.js';
 import type { OnboardingService } from '../../services/onboarding.js';
 import type { CurrentChatAdminChecker } from '../../services/authorize-action.js';
+import { ChatSettingsError, type ChatSettingsService } from '../../services/chat-settings.js';
+import { ChatDataDeletionError, type DeleteChatData } from '../../services/delete-chat-data.js';
 import type { TelegramUpdate } from '../bot.js';
 import {
   notificationStatusPrivateChatRequiredText,
@@ -88,6 +90,9 @@ export type GroupMessenger = Readonly<{
 
 export type GroupUpdateHandler = (update: TelegramUpdate, messenger: GroupMessenger) => Promise<void>;
 
+type ChatSettingsFactory = (isCurrentChatAdmin: CurrentChatAdminChecker) => ChatSettingsService;
+type DeleteChatDataFactory = (isCurrentChatAdmin: CurrentChatAdminChecker) => DeleteChatData;
+
 function isBotAdded(previousStatus: string, nextStatus: string): boolean {
   return ['left', 'kicked'].includes(previousStatus) && ['member', 'administrator'].includes(nextStatus);
 }
@@ -95,7 +100,9 @@ function isBotAdded(previousStatus: string, nextStatus: string): boolean {
 export function createGroupUpdateHandler(input: Readonly<{
   analyzeGroupMessage?: AnalyzeGroupMessage;
   botUsername: string;
+  chatSettings?: ChatSettingsFactory;
   connectChat: ConnectChat;
+  deleteChatData?: DeleteChatDataFactory;
   onboardingInvitations: OnboardingInvitationService;
   onboarding?: OnboardingService;
 }>): GroupUpdateHandler {
@@ -111,14 +118,65 @@ export function createGroupUpdateHandler(input: Readonly<{
         });
         return;
       }
+      if (command?.name === 'settings' && input.chatSettings && input.onboarding) {
+        const chat = await input.onboarding.findActiveChatByTelegramChatId(String(message.chat.id));
+        if (!chat) {
+          return;
+        }
+        const mode = command.argument?.toLowerCase() ?? '';
+        try {
+          const savedMode = await input.chatSettings(messenger.isCurrentChatAdmin ?? (() => Promise.resolve(false))).setMode({
+            chatId: chat.id,
+            mode,
+            requestedByTelegramUserId: String(message.from.id),
+            workspaceId: chat.workspaceId,
+          });
+          const label = savedMode === 'suggest' ? 'Suggest' : savedMode === 'manual' ? 'Manual' : 'Silent Digest';
+          await messenger.sendGroupMessage?.({ telegramChatId: chat.telegramChatId, text: `Режим Keepword: ${label}.` });
+        } catch (error: unknown) {
+          if (error instanceof ChatSettingsError) {
+            const text = error.code === 'UNAUTHORIZED'
+              ? 'Только текущий администратор чата может менять режим Keepword.'
+              : 'Используйте: /settings suggest|manual|silent_digest';
+            await messenger.sendGroupMessage?.({ telegramChatId: chat.telegramChatId, text });
+            return;
+          }
+          throw error;
+        }
+        return;
+      }
       if (command?.name === 'settings' || command?.name === 'start' || command?.name === 'tasks') {
         await messenger.sendGroupMessage?.({ telegramChatId: String(message.chat.id), text: 'Эта команда работает в личном чате с Keepword.' });
+        return;
+      }
+      if (command?.name === 'privacy' && command.argument?.toLowerCase() === 'delete' && input.deleteChatData && input.onboarding) {
+        const chat = await input.onboarding.findActiveChatByTelegramChatId(String(message.chat.id));
+        if (!chat) {
+          return;
+        }
+        try {
+          await input.deleteChatData(messenger.isCurrentChatAdmin ?? (() => Promise.resolve(false)))({
+            chatId: chat.id,
+            requestedByTelegramUserId: String(message.from.id),
+            workspaceId: chat.workspaceId,
+          });
+          await messenger.sendGroupMessage?.({ telegramChatId: chat.telegramChatId, text: 'Данные Keepword для этого чата удалены.' });
+        } catch (error: unknown) {
+          if (error instanceof ChatDataDeletionError) {
+            await messenger.sendGroupMessage?.({
+              telegramChatId: chat.telegramChatId,
+              text: 'Только текущий администратор чата может удалить данные Keepword.',
+            });
+            return;
+          }
+          throw error;
+        }
         return;
       }
       if (command?.name === 'privacy') {
         await messenger.sendGroupMessage?.({
           telegramChatId: String(message.chat.id),
-          text: 'Keepword анализирует только новые сообщения после подключения. Для маршрута удаления данных обратитесь к текущему администратору чата.',
+          text: 'Keepword анализирует только новые сообщения после подключения. Текущий администратор может удалить данные командой /privacy delete.',
         });
         return;
       }
@@ -142,6 +200,7 @@ export function createGroupUpdateHandler(input: Readonly<{
           sentAt: new Date(source.date * 1_000),
           telegramChatId: String(message.chat.id),
           telegramMessageId: String(source.message_id),
+          manualCapture: true,
           text: source.text,
         });
         return;
