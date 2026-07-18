@@ -54,6 +54,18 @@ export function createDeleteChatData<TQueryResult extends PgQueryResultHKT>(
     }
 
     await database.transaction(async (transaction) => {
+      const deactivated = await transaction
+        .update(chats)
+        .set({ isActive: false, updatedAt: new Date() })
+        .where(and(
+          eq(chats.id, input.chatId),
+          eq(chats.workspaceId, input.workspaceId),
+          eq(chats.isActive, true),
+        ))
+        .returning({ id: chats.id });
+      if (deactivated.length !== 1) {
+        throw new ChatDataDeletionError('CHAT_UNAVAILABLE');
+      }
       await transaction.delete(notificationDeliveries).where(and(
         eq(notificationDeliveries.chatId, input.chatId),
         eq(notificationDeliveries.workspaceId, input.workspaceId),
@@ -82,10 +94,6 @@ export function createDeleteChatData<TQueryResult extends PgQueryResultHKT>(
         eq(chatMemberships.chatId, input.chatId),
         eq(chatMemberships.workspaceId, input.workspaceId),
       ));
-      await transaction
-        .update(chats)
-        .set({ isActive: false, updatedAt: new Date() })
-        .where(and(eq(chats.id, input.chatId), eq(chats.workspaceId, input.workspaceId)));
     });
   };
 }

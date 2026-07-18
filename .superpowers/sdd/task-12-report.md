@@ -27,3 +27,16 @@
 
 - Authorization always calls the live Telegram admin checker; an old database membership alone cannot change a mode or delete data.
 - Deletion preserves only an inactive chat marker for operational routing and removes scoped messages, suggestions, commitments, source links, deliveries, memberships, manual-capture markers, and onboarding tokens. Dependent callback and edit/reschedule rows are removed by existing foreign-key cascades.
+
+## Blocker follow-up
+
+- Silent Digest now suppresses medium-confidence follow-up clarification replies as well as high-confidence public suggestion cards.
+- The administrator review query now joins the chat scope and returns pending candidates only when that chat is currently in `silent_digest` mode; ordinary `suggest` chat candidates stay out of the review section.
+- Deletion now starts its transaction with a conditional `is_active = true → false` update. PostgreSQL takes the row lock for that update before any scoped deletes, preventing a parallel deletion from continuing and making subsequent active-chat analysis fail closed.
+
+### Follow-up verification
+
+- Targeted privacy/mode tests — passed (9 tests)
+- `pnpm typecheck` — passed
+- `pnpm lint` — passed
+- `pnpm test` — passed (24 files, 110 tests)

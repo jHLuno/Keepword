@@ -1,7 +1,7 @@
 import { and, eq } from 'drizzle-orm';
 import type { PgQueryResultHKT } from 'drizzle-orm/pg-core';
 
-import { commitmentSuggestions, commitments } from '../db/schema.js';
+import { chats, commitmentSuggestions, commitments } from '../db/schema.js';
 
 import type { RepositoryDatabase } from './database.js';
 
@@ -153,11 +153,19 @@ export function createCommitmentsRepository<TQueryResult extends PgQueryResultHK
       const rows = await database
         .select({ title: commitmentSuggestions.title })
         .from(commitmentSuggestions)
+        .innerJoin(
+          chats,
+          and(
+            eq(commitmentSuggestions.chatId, chats.id),
+            eq(commitmentSuggestions.workspaceId, chats.workspaceId),
+          ),
+        )
         .where(
           and(
             eq(commitmentSuggestions.workspaceId, input.workspaceId),
             eq(commitmentSuggestions.chatId, input.chatId),
             eq(commitmentSuggestions.status, 'pending'),
+            eq(chats.mode, 'silent_digest'),
           ),
         );
       return rows.map((row) => row.title);

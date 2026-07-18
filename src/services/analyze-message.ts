@@ -138,7 +138,12 @@ export function createAnalyzeGroupMessage<TQueryResult extends PgQueryResultHKT>
       recentMessages,
     });
 
-    if (candidate.confidence === 'medium' && candidate.is_commitment && candidate.category === 'follow_up') {
+    if (
+      chat.mode !== 'silent_digest' &&
+      candidate.confidence === 'medium' &&
+      candidate.is_commitment &&
+      candidate.category === 'follow_up'
+    ) {
       if (!activeMessenger) {
         throw new Error('A Telegram messenger is required to request clarification');
       }

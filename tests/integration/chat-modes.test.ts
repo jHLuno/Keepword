@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import type { CommitmentCandidate } from '../../src/domain/extraction.js';
 import { chatMemberships, chats, commitmentSuggestions, users } from '../../src/db/schema.js';
 import { createDigestJob } from '../../src/jobs/digests.js';
+import { createCommitmentsRepository } from '../../src/repositories/commitments.js';
 import { createConnectChat } from '../../src/services/connect-chat.js';
 import { createChatSettingsService } from '../../src/services/chat-settings.js';
 import { createAnalyzeGroupMessage } from '../../src/services/analyze-message.js';
@@ -154,7 +155,83 @@ describe('chat modes', () => {
 
     const telegram = createFakeTelegram();
     await createDigestJob({ database: database.db, messenger: telegram })(new Date('2026-07-18T18:00:00.000Z'));
-    expect(telegram.privateMessagesFor(120001).find((text) => text.includes('На проверку'))).toContain('Отправить КП');
+    expect(telegram.privateMessagesFor(120001).some(
+      (text) => text.includes('На проверку') && text.includes('Отправить КП'),
+    )).toBe(true);
+  });
+
+  test('silent digest suppresses medium-confidence public clarification requests', async () => {
+    const connected = await connectChat();
+    const settings = createChatSettingsService(database.db, () => Promise.resolve(true));
+    await settings.setMode({
+      chatId: connected.chatId,
+      mode: 'silent_digest',
+      requestedByTelegramUserId: '120001',
+      workspaceId: connected.workspaceId,
+    });
+    const clarifications: string[] = [];
+    let extractionCalls = 0;
+    const analyzer = createAnalyzeGroupMessage(database.db, {
+      extractCandidate: () => {
+        extractionCalls += 1;
+        return Promise.resolve({ ...candidate, category: 'follow_up', confidence: 'medium' });
+      },
+    }, {
+      sendClarificationRequest: (request) => {
+        clarifications.push(request.text);
+        return Promise.resolve();
+      },
+      sendSuggestionReply: () => Promise.resolve(),
+    }, 'mode-test-secret');
+
+    await expect(analyzer({
+      author: { firstName: 'Admin', telegramUserId: 120001 },
+      sentAt: new Date('2026-07-18T09:00:00.000Z'),
+      telegramChatId: String(nextTelegramChatId),
+      telegramMessageId: '31',
+      text: 'Сегодня отправлю КП',
+    })).resolves.toBe('skipped');
+    expect(extractionCalls).toBe(1);
+    expect(clarifications).toEqual([]);
+  });
+
+  test('silent review candidates exclude pending suggestions from suggest chats', async () => {
+    const silent = await connectChat();
+    const ordinary = await connectChat();
+    const settings = createChatSettingsService(database.db, () => Promise.resolve(true));
+    await settings.setMode({
+      chatId: silent.chatId,
+      mode: 'silent_digest',
+      requestedByTelegramUserId: '120001',
+      workspaceId: silent.workspaceId,
+    });
+    const analyzer = createAnalyzeGroupMessage(database.db, {
+      extractCandidate: () => Promise.resolve(candidate),
+    }, {
+      sendClarificationRequest: () => Promise.resolve(),
+      sendSuggestionReply: () => Promise.resolve(),
+    }, 'mode-test-secret');
+
+    await analyzer({
+      author: { firstName: 'Admin', telegramUserId: 120001 },
+      sentAt: new Date('2026-07-18T09:00:00.000Z'),
+      telegramChatId: silent.telegramChatId,
+      telegramMessageId: '41',
+      text: 'Сегодня отправлю КП',
+    });
+    await analyzer({
+      author: { firstName: 'Admin', telegramUserId: 120001 },
+      sentAt: new Date('2026-07-18T09:01:00.000Z'),
+      telegramChatId: ordinary.telegramChatId,
+      telegramMessageId: '42',
+      text: 'Сегодня отправлю КП',
+    });
+
+    const commitments = createCommitmentsRepository(database.db);
+    await expect(commitments.findPendingSuggestionTitles({ chatId: silent.chatId, workspaceId: silent.workspaceId }))
+      .resolves.toEqual(['Отправить КП']);
+    await expect(commitments.findPendingSuggestionTitles({ chatId: ordinary.chatId, workspaceId: ordinary.workspaceId }))
+      .resolves.toEqual([]);
   });
 
   test('rejects the non-MVP auto_capture mode', async () => {

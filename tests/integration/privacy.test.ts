@@ -16,6 +16,7 @@ import {
 import { createConnectChat } from '../../src/services/connect-chat.js';
 import { ChatDataDeletionError, createDeleteChatData } from '../../src/services/delete-chat-data.js';
 import { createMessagesRepository } from '../../src/repositories/messages.js';
+import { createAnalyzeGroupMessage } from '../../src/services/analyze-message.js';
 import { createPgliteTestDatabase, type PgliteTestDatabase } from '../helpers/pglite.js';
 
 let database: PgliteTestDatabase;
@@ -142,5 +143,40 @@ describe('chat data deletion', () => {
       workspaceId: connected.workspaceId,
     })).rejects.toBeInstanceOf(ChatDataDeletionError);
     expect(await countForChat(sourceMessages, connected.chatId)).toBe(1);
+  });
+
+  test('deactivation prevents a fresh analysis write after deletion completes', async () => {
+    const connected = await createPopulatedChat();
+    const deleteChatData = createDeleteChatData(database.db, () => Promise.resolve(true));
+    await deleteChatData({
+      chatId: connected.chatId,
+      requestedByTelegramUserId: '130001',
+      workspaceId: connected.workspaceId,
+    });
+    const analyzer = createAnalyzeGroupMessage(database.db, {
+      extractCandidate: () => Promise.resolve({
+        assignee_telegram_user_id: '130001',
+        category: 'promise' as const,
+        confidence: 'high' as const,
+        description: null,
+        due_at: null,
+        due_date_text: 'сегодня',
+        is_commitment: true,
+        needs_assignee_clarification: false,
+        needs_due_date_clarification: false,
+        reasoning_short: 'Явное обещание.',
+        source_message_ids: [],
+        title: 'Не должно сохраниться',
+      }),
+    }, undefined, 'privacy-test-secret');
+
+    await expect(analyzer({
+      author: { firstName: 'Admin', telegramUserId: 130001 },
+      sentAt: new Date('2026-07-18T10:00:00.000Z'),
+      telegramChatId: connected.telegramChatId,
+      telegramMessageId: '99',
+      text: 'Сегодня отправлю отчёт',
+    })).resolves.toBe('skipped');
+    expect(await countForChat(sourceMessages, connected.chatId)).toBe(0);
   });
 });
