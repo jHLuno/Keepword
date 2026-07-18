@@ -68,3 +68,13 @@ test('maps a known internal error to a safe diagnostic code', () => {
     'TELEGRAM_UPDATE_DISPATCH_FAILED_DATABASE_RETURNING_EMPTY',
   );
 });
+
+test('uses a safe source module name for an otherwise unknown error', () => {
+  const error = {
+    stack: 'Error: unexpected\n    at createConnectChat (file:///app/dist/src/services/connect-chat.js:27:11)',
+  };
+
+  expect(safeErrorCode(error, 'TELEGRAM_UPDATE_DISPATCH_FAILED')).toBe(
+    'TELEGRAM_UPDATE_DISPATCH_FAILED_AT_CREATE_CONNECT_CHAT',
+  );
+});

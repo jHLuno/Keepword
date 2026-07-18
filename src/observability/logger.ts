@@ -49,6 +49,17 @@ export function safeErrorCode(error: unknown, fallback: string): string {
       return `${fallback}_${internalCode}`;
     }
   }
+  if (typeof candidate.stack === 'string') {
+    const sourceFrame = candidate.stack
+      .split('\n')
+      .find((frame) => /\/(?:src|dist\/src)\//.test(frame));
+    const sourceFunction = sourceFrame
+      ? /\bat (?:async )?([A-Za-z][A-Za-z0-9_$]*)\s*\(/.exec(sourceFrame)?.[1]
+      : undefined;
+    if (sourceFunction) {
+      return `${fallback}_AT_${sourceFunction.replace(/([a-z])([A-Z])/g, '$1_$2').toUpperCase()}`;
+    }
+  }
   return fallback;
 }
 
