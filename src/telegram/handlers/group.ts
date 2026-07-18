@@ -7,7 +7,10 @@ import type {
 } from '../../services/analyze-message.js';
 import type { ConnectChat } from '../../services/connect-chat.js';
 import type { OnboardingInvitationService } from '../../services/onboarding-invitation.js';
+import type { OnboardingService } from '../../services/onboarding.js';
+import type { CurrentChatAdminChecker } from '../../services/authorize-action.js';
 import type { TelegramUpdate } from '../bot.js';
+import { onboardingCardText, renderNotificationStatus } from '../messages.js';
 
 const groupMemberUpdateSchema = z
   .object({
@@ -52,22 +55,19 @@ export type OnboardingCard = Readonly<{
 }>;
 
 export type GroupMessenger = Readonly<{
+  isCurrentChatAdmin?: CurrentChatAdminChecker;
   sendClarificationRequest: (request: ClarificationRequest) => Promise<void>;
+  sendGroupMessage?: (input: Readonly<{ telegramChatId: string; text: string }>) => Promise<void>;
   sendOnboardingCard: (card: OnboardingCard) => Promise<void>;
+  sendNotificationInvite?: (invite: Readonly<{
+    onboardingDeepLink: string;
+    telegramChatId: string;
+    text: string;
+  }>) => Promise<void>;
   sendSuggestionReply: (reply: SuggestionReply) => Promise<void>;
 }>;
 
 export type GroupUpdateHandler = (update: TelegramUpdate, messenger: GroupMessenger) => Promise<void>;
-
-const onboardingText = [
-  '👋 Keepword подключён',
-  '',
-  'Я замечаю рабочие договорённости только в новых сообщениях после подключения и помогаю не терять их.',
-  '',
-  'Я не создаю задачи молча: каждая договорённость должна быть подтверждена автором или администратором.',
-  '',
-  'Чтобы получать личные напоминания и вечерние сводки, подключите личные уведомления.',
-].join('\n');
 
 function isBotAdded(previousStatus: string, nextStatus: string): boolean {
   return ['left', 'kicked'].includes(previousStatus) && ['member', 'administrator'].includes(nextStatus);
@@ -78,11 +78,47 @@ export function createGroupUpdateHandler(input: Readonly<{
   botUsername: string;
   connectChat: ConnectChat;
   onboardingInvitations: OnboardingInvitationService;
+  onboarding?: OnboardingService;
 }>): GroupUpdateHandler {
   return async (update, messenger) => {
     const parsedMessageUpdate = groupMessageUpdateSchema.safeParse(update.payload);
-    if (parsedMessageUpdate.success && !parsedMessageUpdate.data.message.from.is_bot && input.analyzeGroupMessage) {
+    if (parsedMessageUpdate.success && !parsedMessageUpdate.data.message.from.is_bot) {
       const message = parsedMessageUpdate.data.message;
+      const command = /^\/(invite|notifications)(?:@\w+)?$/i.exec(message.text.trim())?.[1]?.toLowerCase();
+      if (command && input.onboarding) {
+        const isAdmin = await (messenger.isCurrentChatAdmin ?? (() => Promise.resolve(false)))({
+          telegramChatId: String(message.chat.id),
+          telegramUserId: message.from.id,
+        });
+        if (!isAdmin) {
+          await messenger.sendGroupMessage?.({
+            telegramChatId: String(message.chat.id),
+            text: 'Только администратор чата может управлять уведомлениями.',
+          });
+          return;
+        }
+        const chat = await input.onboarding.findActiveChatByTelegramChatId(String(message.chat.id));
+        if (!chat) {
+          return;
+        }
+        if (command === 'invite') {
+          const onboardingDeepLink = await input.onboarding.createOnboardingLink(chat.id);
+          await messenger.sendOnboardingCard({
+            onboardingDeepLink,
+            telegramChatId: chat.telegramChatId,
+            text: onboardingCardText,
+          });
+          return;
+        }
+        await messenger.sendGroupMessage?.({
+          telegramChatId: chat.telegramChatId,
+          text: renderNotificationStatus(await input.onboarding.notificationStatus(chat.id)),
+        });
+        return;
+      }
+      if (!input.analyzeGroupMessage) {
+        return;
+      }
       await input.analyzeGroupMessage({
         author: {
           firstName: message.from.first_name,
@@ -125,7 +161,7 @@ export function createGroupUpdateHandler(input: Readonly<{
     await messenger.sendOnboardingCard({
       onboardingDeepLink: `https://t.me/${input.botUsername}?start=join_${invitation.onboardingToken}`,
       telegramChatId: invitation.telegramChatId,
-      text: onboardingText,
+      text: onboardingCardText,
     });
     await input.onboardingInvitations.markOnboardingMessageSent(invitation);
   };

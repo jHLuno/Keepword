@@ -92,6 +92,7 @@ export const chatMemberships = pgTable(
     role: membershipRole('role').notNull().default('member'),
     notificationsEnabled: boolean('notifications_enabled').notNull().default(false),
     notificationsConnectedAt: timestamp('notifications_connected_at', { withTimezone: true }),
+    lastNotificationInviteAt: timestamp('last_notification_invite_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

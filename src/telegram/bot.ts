@@ -22,6 +22,11 @@ export type TelegramAdapterFactory = (
 
 function createGrammYMessenger(context: Context): GroupMessenger {
   return {
+    async isCurrentChatAdmin(input) {
+      const member = await context.api.getChatMember(Number(input.telegramChatId), input.telegramUserId);
+      return member.status === 'administrator' || member.status === 'creator';
+    },
+
     async sendClarificationRequest(request) {
       await context.api.sendMessage(Number(request.telegramChatId), request.text, {
         reply_parameters: { message_id: Number(request.replyToTelegramMessageId) },
@@ -34,6 +39,18 @@ function createGrammYMessenger(context: Context): GroupMessenger {
           inline_keyboard: [[{ text: '🔔 Подключить уведомления', url: card.onboardingDeepLink }]],
         },
       });
+    },
+
+    async sendNotificationInvite(invite) {
+      await context.api.sendMessage(Number(invite.telegramChatId), invite.text, {
+        reply_markup: {
+          inline_keyboard: [[{ text: 'Подключить уведомления', url: invite.onboardingDeepLink }]],
+        },
+      });
+    },
+
+    async sendGroupMessage(input) {
+      await context.api.sendMessage(Number(input.telegramChatId), input.text);
     },
 
     async sendSuggestionReply(reply) {

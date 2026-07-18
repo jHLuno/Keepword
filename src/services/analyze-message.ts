@@ -7,10 +7,11 @@ import type { Logger } from '../observability/logger.js';
 import { createMessagesRepository } from '../repositories/messages.js';
 import type { RepositoryDatabase } from '../repositories/database.js';
 import { createUsersRepository } from '../repositories/users.js';
-import { renderSuggestion, type InlineKeyboardMarkup } from '../telegram/messages.js';
+import { renderNotificationInvite, renderSuggestion, type InlineKeyboardMarkup } from '../telegram/messages.js';
 
 import { createSuggestion } from './create-suggestion.js';
 import { createCallbackTokenService } from './callback-tokens.js';
+import type { OnboardingService } from './onboarding.js';
 
 const clarificationText = 'Похоже, это договорённость. Кто отвечает и к какому сроку?';
 
@@ -42,6 +43,11 @@ export type ClarificationRequest = Readonly<{
 
 export type SuggestionMessenger = Readonly<{
   sendClarificationRequest: (request: ClarificationRequest) => Promise<void>;
+  sendNotificationInvite?: (invite: Readonly<{
+    onboardingDeepLink: string;
+    telegramChatId: string;
+    text: string;
+  }>) => Promise<void>;
   sendSuggestionReply: (reply: SuggestionReply) => Promise<void>;
 }>;
 
@@ -76,6 +82,7 @@ export function createAnalyzeGroupMessage<TQueryResult extends PgQueryResultHKT>
   messenger: SuggestionMessenger | undefined,
   callbackSigningSecret: string,
   logger?: Logger,
+  onboarding?: OnboardingService,
 ): AnalyzeGroupMessage {
   const messages = createMessagesRepository(database);
   const users = createUsersRepository(database);
@@ -180,6 +187,21 @@ export function createAnalyzeGroupMessage<TQueryResult extends PgQueryResultHKT>
       messageId: sourceMessage.id,
       workspaceId: chat.workspaceId,
     });
+    const notificationOnboarding = onboarding;
+    if (
+      activeMessenger?.sendNotificationInvite &&
+      notificationOnboarding &&
+      await notificationOnboarding.claimNotificationInvite({
+        chatId: chat.id,
+        telegramUserId: String(assigneeTelegramUserId),
+      })
+    ) {
+      await activeMessenger.sendNotificationInvite({
+        onboardingDeepLink: await notificationOnboarding.createOnboardingLink(chat.id),
+        telegramChatId: input.telegramChatId,
+        text: renderNotificationInvite(assignee.username),
+      });
+    }
     const callbackNonces = await callbackTokens.issueSuggestionCallbacks({
       actions: ['confirm', 'edit', 'reject'],
       suggestionId: createdSuggestion.id,

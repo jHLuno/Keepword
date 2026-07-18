@@ -14,6 +14,7 @@ export type FakeTelegram = Readonly<{
   callbackAnswers: readonly string[];
   clarificationRequests: readonly ClarificationRequest[];
   handledUpdateIds: readonly number[];
+  notificationInvites: readonly RecordedOnboardingCard[];
   onboardingCards: readonly RecordedOnboardingCard[];
   privateMessages: readonly string[];
   suggestionReplies: readonly SuggestionReply[];
@@ -29,6 +30,7 @@ export type FakeTelegramOptions = Readonly<{
 export function createFakeTelegram(options: FakeTelegramOptions = {}): FakeTelegram {
   const callbackAnswers: string[] = [];
   const handledUpdateIds: number[] = [];
+  const notificationInvites: RecordedOnboardingCard[] = [];
   const onboardingCards: RecordedOnboardingCard[] = [];
   const privateMessages: string[] = [];
   const clarificationRequests: ClarificationRequest[] = [];
@@ -37,6 +39,9 @@ export function createFakeTelegram(options: FakeTelegramOptions = {}): FakeTeleg
   let remainingFailures = options.failuresBeforeSuccess ?? 0;
 
   const messenger: GroupMessenger = {
+    isCurrentChatAdmin({ telegramUserId }) {
+      return Promise.resolve(options.currentAdminTelegramUserIds?.includes(telegramUserId) ?? false);
+    },
     sendClarificationRequest(request) {
       clarificationRequests.push(request);
       return Promise.resolve();
@@ -48,6 +53,15 @@ export function createFakeTelegram(options: FakeTelegramOptions = {}): FakeTeleg
         return Promise.reject(new Error('Fake onboarding card delivery failed'));
       }
       onboardingCards.push(card);
+      return Promise.resolve();
+    },
+
+    sendNotificationInvite(invite) {
+      notificationInvites.push(invite);
+      return Promise.resolve();
+    },
+
+    sendGroupMessage() {
       return Promise.resolve();
     },
 
@@ -106,6 +120,7 @@ export function createFakeTelegram(options: FakeTelegramOptions = {}): FakeTeleg
     callbackAnswers,
     clarificationRequests,
     handledUpdateIds,
+    notificationInvites,
     onboardingCards,
     privateMessages,
     suggestionReplies,

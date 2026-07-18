@@ -12,6 +12,7 @@ export type ScopedMemberInput = Readonly<{
 }>;
 
 export type UsersRepository = Readonly<{
+  findByTelegramUserId: (telegramUserId: number) => Promise<typeof users.$inferSelect | null>;
   findScopedMember: (input: ScopedMemberInput) => Promise<typeof users.$inferSelect | null>;
 }>;
 
@@ -19,6 +20,15 @@ export function createUsersRepository<TQueryResult extends PgQueryResultHKT>(
   database: RepositoryDatabase<TQueryResult>,
 ): UsersRepository {
   return {
+    async findByTelegramUserId(telegramUserId) {
+      const rows = await database
+        .select()
+        .from(users)
+        .where(eq(users.telegramUserId, telegramUserId))
+        .limit(1);
+      return rows[0] ?? null;
+    },
+
     async findScopedMember(input) {
       const rows = await database
         .select({ user: users })

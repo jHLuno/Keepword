@@ -11,6 +11,7 @@ import type { RepositoryDatabase } from './repositories/database.js';
 import { createUpdatesRepository } from './repositories/updates.js';
 import { createConnectChat } from './services/connect-chat.js';
 import { createOnboardingInvitationService } from './services/onboarding-invitation.js';
+import { createOnboardingService } from './services/onboarding.js';
 import { createAnalyzeGroupMessage, type AnalyzeGroupMessage } from './services/analyze-message.js';
 import { createTelegramBot, type TelegramAdapterFactory } from './telegram/bot.js';
 import { createCommitmentActionCallbackHandler } from './telegram/handlers/callback.js';
@@ -49,6 +50,7 @@ export function buildApp<TQueryResult extends PgQueryResultHKT>(
   const logger = dependencies.logger ?? createLogger();
   const connectChat = createConnectChat(dependencies.database);
   const onboardingInvitations = createOnboardingInvitationService(dependencies.database);
+  const onboarding = createOnboardingService(dependencies.database, { botUsername: config.telegramBotUsername });
   const analyzeGroupMessage =
     dependencies.analyzeGroupMessage ??
     createAnalyzeGroupMessage(
@@ -57,12 +59,14 @@ export function buildApp<TQueryResult extends PgQueryResultHKT>(
       undefined,
       config.callbackSigningSecret,
       logger,
+      onboarding,
     );
   const groupUpdateHandler = createGroupUpdateHandler({
     analyzeGroupMessage,
     botUsername: config.telegramBotUsername,
     connectChat,
     onboardingInvitations,
+    onboarding,
   });
   const callbackUpdateHandler = createCommitmentActionCallbackHandler({
     callbackSigningSecret: config.callbackSigningSecret,
@@ -72,6 +76,7 @@ export function buildApp<TQueryResult extends PgQueryResultHKT>(
   const privateUpdateHandler = createPrivateUpdateHandler({
     database: dependencies.database,
     logger,
+    onboarding,
   });
   const telegram = dependencies.telegramAdapterFactory
     ? dependencies.telegramAdapterFactory(groupUpdateHandler, callbackUpdateHandler, privateUpdateHandler)

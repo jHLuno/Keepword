@@ -17,6 +17,12 @@ import {
   createCommitmentRescheduleService,
   CommitmentRescheduleError,
 } from '../../services/commitment-reschedule-sessions.js';
+import { OnboardingError, type OnboardingService } from '../../services/onboarding.js';
+import {
+  onboardingHelpText,
+  onboardingTokenUnavailableText,
+  renderOnboardingConnected,
+} from '../messages.js';
 import type { TelegramUpdate } from '../bot.js';
 
 const privateMessageSchema = z
@@ -40,6 +46,7 @@ export function createPrivateUpdateHandler<TQueryResult extends PgQueryResultHKT
   database: RepositoryDatabase<TQueryResult>;
   isCurrentChatAdmin?: CurrentChatAdminChecker;
   logger?: Logger;
+  onboarding?: OnboardingService;
 }>): PrivateUpdateHandler {
   const editSessions = createSuggestionEditSessionService(input.database);
   return async (update, messenger) => {
@@ -48,6 +55,41 @@ export function createPrivateUpdateHandler<TQueryResult extends PgQueryResultHKT
       return;
     }
     const message = parsed.data.message;
+    const startMatch = /^\/start(?:\s+(.+))?$/i.exec(message.text.trim());
+    if (startMatch) {
+      const joinMatch = /^join_([A-Za-z0-9_-]+)$/.exec(startMatch[1] ?? '');
+      if (!joinMatch || !input.onboarding) {
+        await messenger.sendPrivateMessage({ telegramUserId: message.from.id, text: onboardingHelpText });
+        return;
+      }
+      try {
+        const membership = await input.onboarding.redeemOnboardingToken({
+          telegramUserId: String(message.from.id),
+          token: joinMatch[1]!,
+        });
+        await messenger.sendPrivateMessage({
+          telegramUserId: message.from.id,
+          text: renderOnboardingConnected(membership.chatTitle),
+        });
+        input.logger?.info('onboarding_completed', {
+          telegramUserId: String(message.from.id),
+          workspaceId: membership.workspaceId,
+          result: 'success',
+        });
+      } catch (error: unknown) {
+        if (error instanceof OnboardingError) {
+          await messenger.sendPrivateMessage({ telegramUserId: message.from.id, text: onboardingTokenUnavailableText });
+          input.logger?.info('onboarding_completed', {
+            errorCode: error.code,
+            telegramUserId: String(message.from.id),
+            result: 'failure',
+          });
+          return;
+        }
+        throw error;
+      }
+      return;
+    }
     const session = await editSessions.findActiveForTelegramUser(message.from.id);
     if (!session) {
       const reschedules = createCommitmentRescheduleService(

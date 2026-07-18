@@ -46,6 +46,10 @@ export function createConnectChat<TQueryResult extends PgQueryResultHKT>(
       const existingChat = existingChats[0];
 
       if (existingChat) {
+        await transaction
+          .update(chats)
+          .set({ isActive: true, updatedAt: new Date() })
+          .where(eq(chats.id, existingChat.id));
         return {
           chatId: existingChat.id,
           telegramChatId: input.telegramChatId,

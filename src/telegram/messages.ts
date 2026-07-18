@@ -23,6 +23,45 @@ type CommitmentAction = 'block' | 'cancel' | 'complete' | 'open' | 'reschedule';
 
 export type CommitmentCallbackNonces = Readonly<Record<CommitmentAction, string>>;
 
+export const onboardingCardText = [
+  '👋 Keepword подключён',
+  '',
+  'Я замечаю рабочие договорённости только в новых сообщениях после подключения и помогаю не терять их.',
+  '',
+  'Я не создаю задачи молча: каждая договорённость должна быть подтверждена автором или администратором.',
+  '',
+  'Чтобы получать личные напоминания и вечерние сводки, подключите личные уведомления.',
+].join('\n');
+
+export function renderOnboardingConnected(chatTitle: string): string {
+  return [
+    '✅ Уведомления подключены',
+    '',
+    'Теперь я смогу отправлять вам напоминания о задачах, уведомления о просрочках и личную вечернюю сводку.',
+    '',
+    `Группа: ${chatTitle}`,
+  ].join('\n');
+}
+
+export const onboardingHelpText = 'Чтобы подключить уведомления, откройте ссылку приглашения из нужной группы.';
+
+export const onboardingTokenUnavailableText = 'Эта ссылка больше не действует. Попросите администратора отправить новое приглашение.';
+
+export function renderNotificationInvite(name: string | null): string {
+  const recipient = name ? `@${name}` : 'Коллега';
+  return `🔔 ${recipient}, чтобы получать личные напоминания и вечернюю сводку, подключите Keepword.`;
+}
+
+export function renderNotificationStatus(input: Readonly<{
+  connected: number;
+  notConnected: readonly string[];
+}>): string {
+  const missing = input.notConnected.length > 0
+    ? input.notConnected.map((name) => `— ${name}`).join('\n')
+    : '— нет';
+  return `🔔 Notification status\n\nConnected: ${input.connected}\nNot connected: ${input.notConnected.length}\n\nWithout notifications:\n${missing}`;
+}
+
 export function renderSuggestion(
   suggestion: SuggestionCard,
   callbackNonces: SuggestionCallbackNonces,
