@@ -15,15 +15,21 @@ export type FakeTelegram = Readonly<{
 
 export type FakeTelegramOptions = Readonly<{
   failuresBeforeSuccess?: number;
+  onboardingCardFailuresBeforeSuccess?: number;
 }>;
 
 export function createFakeTelegram(options: FakeTelegramOptions = {}): FakeTelegram {
   const handledUpdateIds: number[] = [];
   const onboardingCards: RecordedOnboardingCard[] = [];
+  let remainingOnboardingCardFailures = options.onboardingCardFailuresBeforeSuccess ?? 0;
   let remainingFailures = options.failuresBeforeSuccess ?? 0;
 
   const messenger: GroupMessenger = {
     sendOnboardingCard(card) {
+      if (remainingOnboardingCardFailures > 0) {
+        remainingOnboardingCardFailures -= 1;
+        return Promise.reject(new Error('Fake onboarding card delivery failed'));
+      }
       onboardingCards.push(card);
       return Promise.resolve();
     },

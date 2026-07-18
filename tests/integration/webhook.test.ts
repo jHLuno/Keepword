@@ -142,4 +142,43 @@ describe('Telegram webhook', () => {
 
     await app.close();
   });
+
+  test('retries onboarding-card delivery after the group connection already exists', async () => {
+    const { app, fakeTelegram } = buildWebhookApp({ onboardingCardFailuresBeforeSuccess: 1 });
+    const retryUpdate = {
+      ...botAddedToGroupUpdate,
+      my_chat_member: {
+        ...botAddedToGroupUpdate.my_chat_member,
+        chat: {
+          ...botAddedToGroupUpdate.my_chat_member.chat,
+          id: -1_001_234_567_891,
+          title: 'Onboarding retry group',
+        },
+      },
+      update_id: 2_003,
+    };
+    const request = {
+      headers: { 'x-telegram-bot-api-secret-token': webhookSecret },
+      method: 'POST' as const,
+      payload: retryUpdate,
+      url: '/telegram/webhook',
+    };
+
+    expect((await app.inject(request)).statusCode).toBe(500);
+    expect(await countRows(chats)).toBe(2);
+    expect(fakeTelegram.onboardingCards).toHaveLength(0);
+
+    expect((await app.inject(request)).statusCode).toBe(200);
+    expect(fakeTelegram.handledUpdateIds).toEqual([retryUpdate.update_id, retryUpdate.update_id]);
+    expect(fakeTelegram.onboardingCards).toHaveLength(1);
+    expect(fakeTelegram.onboardingCards[0]?.onboardingDeepLink).not.toContain(
+      String(retryUpdate.my_chat_member.chat.id),
+    );
+
+    expect((await app.inject(request)).statusCode).toBe(200);
+    expect(fakeTelegram.handledUpdateIds).toEqual([retryUpdate.update_id, retryUpdate.update_id]);
+    expect(fakeTelegram.onboardingCards).toHaveLength(1);
+
+    await app.close();
+  });
 });

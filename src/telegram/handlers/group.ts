@@ -67,10 +67,6 @@ export function createGroupUpdateHandler(input: Readonly<{
       title: memberUpdate.chat.title,
     });
 
-    if (!connectedChat.isNew || !connectedChat.onboardingToken) {
-      return;
-    }
-
     await messenger.sendOnboardingCard({
       onboardingDeepLink: `https://t.me/${input.botUsername}?start=join_${connectedChat.onboardingToken}`,
       telegramChatId: connectedChat.telegramChatId,

@@ -16,7 +16,7 @@ export type ConnectChatInput = Readonly<{
 export type ConnectedChat = Readonly<{
   chatId: string;
   isNew: boolean;
-  onboardingToken?: string;
+  onboardingToken: string;
   telegramChatId: string;
   title: string;
   workspaceId: string;
@@ -46,6 +46,7 @@ export function createConnectChat<TQueryResult extends PgQueryResultHKT>(
   return async (input) => {
     const telegramChatId = Number(input.telegramChatId);
     const adminTelegramUserId = Number(input.adminTelegramUserId);
+    const onboardingToken = randomBytes(32).toString('base64url');
 
     return database.transaction(async (transaction) => {
       const existingChats = await transaction
@@ -56,9 +57,17 @@ export function createConnectChat<TQueryResult extends PgQueryResultHKT>(
       const existingChat = existingChats[0];
 
       if (existingChat) {
+        await transaction.insert(onboardingTokens).values({
+          chatId: existingChat.id,
+          expiresAt: new Date(Date.now() + onboardingTokenLifetimeMs),
+          tokenHash: hashOnboardingToken(onboardingToken),
+          workspaceId: existingChat.workspaceId,
+        });
+
         return {
           chatId: existingChat.id,
           isNew: false,
+          onboardingToken,
           telegramChatId: input.telegramChatId,
           title: existingChat.title,
           workspaceId: existingChat.workspaceId,
@@ -108,7 +117,6 @@ export function createConnectChat<TQueryResult extends PgQueryResultHKT>(
         })
         .onConflictDoNothing();
 
-      const onboardingToken = randomBytes(32).toString('base64url');
       await transaction.insert(onboardingTokens).values({
         chatId: chat.id,
         expiresAt: new Date(Date.now() + onboardingTokenLifetimeMs),
