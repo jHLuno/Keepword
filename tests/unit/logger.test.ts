@@ -1,9 +1,26 @@
 import { afterEach, expect, test, vi } from 'vitest';
 
-import { createLogger } from '../../src/observability/logger.js';
+import { createLogger, serializeLog, type LogMetadata } from '../../src/observability/logger.js';
 
 afterEach(() => {
   vi.restoreAllMocks();
+});
+
+test('does not serialize an unapproved private messageText field', () => {
+  const serializedLog = serializeLog(
+    'message_candidate_detected',
+    {
+      messageText: 'private message',
+      telegramChatId: '1',
+    } as unknown as LogMetadata,
+  );
+
+  expect(serializedLog).not.toContain('messageText');
+  expect(serializedLog).not.toContain('private message');
+  expect(JSON.parse(serializedLog)).toMatchObject({
+    event_name: 'message_candidate_detected',
+    telegram_chat_id: '1',
+  });
 });
 
 test('writes only approved metadata fields', () => {
@@ -14,8 +31,7 @@ test('writes only approved metadata fields', () => {
     requestId: 'request-1',
     commitmentId: 'commitment-1',
     result: 'success',
-    privateMessageText: 'this must not be logged',
-  } as never);
+  });
 
   const serializedLog = write.mock.calls[0]?.[0];
 

@@ -6,7 +6,7 @@ export type LogMetadata = Readonly<{
   messageId?: string;
   commitmentId?: string;
   durationMs?: number;
-  result?: 'failure' | 'skipped' | 'success';
+  result?: string;
   errorCode?: string;
 }>;
 
@@ -15,12 +15,7 @@ export type Logger = Readonly<{
   error: (event: string, metadata: LogMetadata) => void;
 }>;
 
-function writeLog(
-  output: NodeJS.WriteStream,
-  level: 'error' | 'info',
-  event: string,
-  metadata: LogMetadata,
-): void {
+export function serializeLog(event: string, metadata: LogMetadata, level: 'error' | 'info' = 'info'): string {
   const safeMetadata = {
     request_id: metadata.requestId,
     workspace_id: metadata.workspaceId,
@@ -33,21 +28,21 @@ function writeLog(
     error_code: metadata.errorCode,
   };
 
-  output.write(`${JSON.stringify({
+  return `${JSON.stringify({
     timestamp: new Date().toISOString(),
     level,
     event_name: event,
     ...safeMetadata,
-  })}\n`);
+  })}\n`;
 }
 
 export function createLogger(): Logger {
   return {
     info(event, metadata) {
-      writeLog(process.stdout, 'info', event, metadata);
+      process.stdout.write(serializeLog(event, metadata));
     },
     error(event, metadata) {
-      writeLog(process.stderr, 'error', event, metadata);
+      process.stderr.write(serializeLog(event, metadata, 'error'));
     },
   };
 }
