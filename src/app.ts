@@ -1,14 +1,17 @@
 import { timingSafeEqual } from 'node:crypto';
 
 import Fastify, { type FastifyInstance } from 'fastify';
+import OpenAI from 'openai';
 import { z } from 'zod';
 
+import { createCommitmentExtractor } from './ai/extractor.js';
 import type { AppConfig } from './config.js';
 import { createLogger, type Logger } from './observability/logger.js';
 import type { RepositoryDatabase } from './repositories/database.js';
 import { createUpdatesRepository } from './repositories/updates.js';
 import { createConnectChat } from './services/connect-chat.js';
 import { createOnboardingInvitationService } from './services/onboarding-invitation.js';
+import { createAnalyzeGroupMessage, type AnalyzeGroupMessage } from './services/analyze-message.js';
 import { createTelegramBot, type TelegramAdapterFactory } from './telegram/bot.js';
 import { createGroupUpdateHandler } from './telegram/handlers/group.js';
 import type { PgQueryResultHKT } from 'drizzle-orm/pg-core';
@@ -20,6 +23,7 @@ const telegramUpdateSchema = z
   .passthrough();
 
 export type AppDependencies<TQueryResult extends PgQueryResultHKT> = Readonly<{
+  analyzeGroupMessage?: AnalyzeGroupMessage;
   database: RepositoryDatabase<TQueryResult>;
   logger?: Logger;
   telegramAdapterFactory?: TelegramAdapterFactory;
@@ -43,7 +47,16 @@ export function buildApp<TQueryResult extends PgQueryResultHKT>(
   const logger = dependencies.logger ?? createLogger();
   const connectChat = createConnectChat(dependencies.database);
   const onboardingInvitations = createOnboardingInvitationService(dependencies.database);
+  const analyzeGroupMessage =
+    dependencies.analyzeGroupMessage ??
+    createAnalyzeGroupMessage(
+      dependencies.database,
+      createCommitmentExtractor(new OpenAI({ apiKey: config.openAiApiKey }), { logger }),
+      undefined,
+      logger,
+    );
   const groupUpdateHandler = createGroupUpdateHandler({
+    analyzeGroupMessage,
     botUsername: config.telegramBotUsername,
     connectChat,
     onboardingInvitations,
