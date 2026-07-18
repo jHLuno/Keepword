@@ -1,12 +1,14 @@
 import { buildApp } from './app.js';
 import { loadConfig } from './config.js';
+import { createDatabaseClient } from './db/client.js';
 import { createLogger } from './observability/logger.js';
 
 const logger = createLogger();
 
 async function start(): Promise<void> {
   const config = loadConfig(process.env);
-  const app = buildApp(config);
+  const database = createDatabaseClient(config.databaseUrl);
+  const app = buildApp(config, { database: database.db });
 
   await app.listen({ host: '0.0.0.0', port: config.port });
   logger.info('http_server_started', { result: 'success' });
