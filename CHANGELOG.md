@@ -10,7 +10,7 @@
 ### Verified
 - `pnpm install --frozen-lockfile` — passed.
 - `pnpm typecheck` — passed.
-- `pnpm test` — passed: 28 files, 147 tests. The integration suite applies the complete local Drizzle migration folder to PGlite.
+- `pnpm test` — passed: 28 files, 148 tests. The integration suite applies the complete local Drizzle migration folder to PGlite.
 - `pnpm build` — passed.
 - `pnpm audit --prod --audit-level=moderate` — passed: no known vulnerabilities.
 - `pnpm lint` — passed after excluding nested generated `dist/` artifacts without excluding source files.
