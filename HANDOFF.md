@@ -3,6 +3,17 @@
 ## 2026-07-19 — Handoff
 
 ### Done
+- Added safe Telegram dispatch error-code logging for production diagnosis.
+
+### Risks / blockers
+- A group update is reaching the Web service but fails during handling; the exact safe upstream code requires one redeploy.
+
+### Next recommended step
+- Let Railway redeploy the Web service, send one test message, then inspect the `telegram_update_dispatch_failed` log line.
+
+## 2026-07-19 — Handoff
+
+### Done
 - Added safe worker error-code logging for production diagnosis.
 
 ### Risks / blockers

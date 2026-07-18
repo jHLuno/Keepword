@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 
 import { buildApp } from '../../src/app.js';
 import { chatMemberships, chats, onboardingTokens, workspaces } from '../../src/db/schema.js';
+import type { Logger } from '../../src/observability/logger.js';
 import { createConnectChat } from '../../src/services/connect-chat.js';
 import { createFakeTelegram, type FakeTelegramOptions } from '../helpers/fake-telegram.js';
 import { createPgliteTestDatabase, type PgliteTestDatabase } from '../helpers/pglite.js';
@@ -175,6 +176,41 @@ describe('Telegram webhook', () => {
     expect((await app.inject(request)).statusCode).toBe(200);
     expect(fakeTelegram.handledUpdateIds).toEqual([retryUpdate.update_id, retryUpdate.update_id]);
 
+    await app.close();
+  });
+
+  test('logs a safe upstream code when Telegram dispatch fails', async () => {
+    const errors: Array<Readonly<{ event: string; errorCode: string | undefined }>> = [];
+    const fakeTelegram = createFakeTelegram({ failureErrorCode: '42P01', failuresBeforeSuccess: 1 });
+    const logger: Logger = {
+      error(event, metadata) {
+        errors.push({ event, errorCode: metadata.errorCode });
+      },
+      info() {},
+    };
+    const app = buildApp(
+      {
+        callbackSigningSecret: 'callback-test-secret',
+        databaseUrl: 'postgres://unused/test',
+        openRouterApiKey: 'unused',
+        port: 3_000,
+        telegramBotToken: 'unused',
+        telegramBotUsername: 'keepword_test_bot',
+        telegramWebhookSecret: webhookSecret,
+        workerSecret: 'unused',
+      },
+      { database: database.db, logger, telegramAdapterFactory: fakeTelegram.telegramAdapterFactory },
+    );
+
+    const response = await app.inject({
+      headers: { 'x-telegram-bot-api-secret-token': webhookSecret },
+      method: 'POST',
+      payload: { ...botAddedToGroupUpdate, update_id: 2_006 },
+      url: '/telegram/webhook',
+    });
+
+    expect(response.statusCode).toBe(500);
+    expect(errors).toContainEqual({ event: 'telegram_update_dispatch_failed', errorCode: 'TELEGRAM_UPDATE_DISPATCH_FAILED_42P01' });
     await app.close();
   });
 

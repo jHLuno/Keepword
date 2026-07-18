@@ -33,6 +33,7 @@ export type FakeTelegram = Readonly<{
 
 export type FakeTelegramOptions = Readonly<{
   currentAdminTelegramUserIds?: readonly number[];
+  failureErrorCode?: string;
   failuresBeforeSuccess?: number;
   onboardingCardFailuresBeforeSuccess?: number;
 }>;
@@ -137,7 +138,7 @@ export function createFakeTelegram(options: FakeTelegramOptions = {}): FakeTeleg
       handledUpdateIds.push(update.updateId);
       if (remainingFailures > 0) {
         remainingFailures -= 1;
-        throw new Error('Fake Telegram adapter failed');
+        throw Object.assign(new Error('Fake Telegram adapter failed'), { code: options.failureErrorCode });
       }
       if (callbackUpdateHandler && isCallbackUpdate(update.payload)) {
         await callbackUpdateHandler(update, callbackMessenger);

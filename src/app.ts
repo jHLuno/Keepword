@@ -6,7 +6,7 @@ import { z } from 'zod';
 
 import { createCommitmentExtractor } from './ai/extractor.js';
 import type { AppConfig } from './config.js';
-import { createLogger, type Logger } from './observability/logger.js';
+import { createLogger, safeErrorCode, type Logger } from './observability/logger.js';
 import type { RepositoryDatabase } from './repositories/database.js';
 import { createUpdatesRepository } from './repositories/updates.js';
 import { createConnectChat } from './services/connect-chat.js';
@@ -167,7 +167,10 @@ export function buildApp<TQueryResult extends PgQueryResultHKT>(
     } catch (error: unknown) {
       await updates.releaseUpdate(updateId);
       logger.error('telegram_update_dispatch_failed', {
-        errorCode: error instanceof Error ? 'TELEGRAM_UPDATE_DISPATCH_FAILED' : 'UNKNOWN_TELEGRAM_DISPATCH_FAILURE',
+        errorCode: safeErrorCode(
+          error,
+          error instanceof Error ? 'TELEGRAM_UPDATE_DISPATCH_FAILED' : 'UNKNOWN_TELEGRAM_DISPATCH_FAILURE',
+        ),
         requestId: request.id,
         result: 'failure',
       });
