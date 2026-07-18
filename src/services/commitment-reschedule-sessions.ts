@@ -6,6 +6,7 @@ import type { CurrentChatAdminChecker } from './authorize-action.js';
 import type { RepositoryDatabase } from '../repositories/database.js';
 
 const sessionLifetimeMs = 15 * 60 * 1_000;
+const isoTimestampPattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2})$/;
 
 export class CommitmentRescheduleError extends Error {
   readonly code: 'RESCHEDULE_UNAVAILABLE' | 'UNAUTHORIZED';
@@ -61,7 +62,11 @@ export function createCommitmentRescheduleService<TQueryResult extends PgQueryRe
   return {
     async apply(input) {
       const dueDateText = input.dueDateText.trim();
-      if (dueDateText.length === 0 || dueDateText.length > 100) {
+      if (dueDateText.length === 0 || dueDateText.length > 100 || !isoTimestampPattern.test(dueDateText)) {
+        throw new CommitmentRescheduleError('RESCHEDULE_UNAVAILABLE');
+      }
+      const dueAt = new Date(dueDateText);
+      if (Number.isNaN(dueAt.getTime()) || dueAt.getTime() <= Date.now()) {
         throw new CommitmentRescheduleError('RESCHEDULE_UNAVAILABLE');
       }
       return database.transaction(async (transaction) => {
@@ -114,7 +119,7 @@ export function createCommitmentRescheduleService<TQueryResult extends PgQueryRe
         }
         const updated = await transaction
           .update(commitments)
-          .set({ dueAt: null, dueDateText, status: 'open', updatedAt: new Date() })
+          .set({ dueAt, dueDateText, status: 'open', updatedAt: new Date() })
           .where(and(eq(commitments.id, commitment.id), eq(commitments.status, commitment.status)))
           .returning();
         const result = updated[0];

@@ -2,7 +2,7 @@ import { and, eq } from 'drizzle-orm';
 import type { PgQueryResultHKT } from 'drizzle-orm/pg-core';
 import { z } from 'zod';
 
-import { chatMemberships, chats, commitmentSuggestions, users } from '../../db/schema.js';
+import { chatMemberships, chats, commitments, commitmentSuggestions, users } from '../../db/schema.js';
 import type { Logger } from '../../observability/logger.js';
 import type { RepositoryDatabase } from '../../repositories/database.js';
 import {
@@ -78,6 +78,27 @@ async function resolveSuggestionTelegramChatId<TQueryResult extends PgQueryResul
   return String(scope.telegramChatId);
 }
 
+async function resolveCommitmentTelegramChatId<TQueryResult extends PgQueryResultHKT>(
+  database: RepositoryDatabase<TQueryResult>,
+  commitmentId: string,
+): Promise<string> {
+  const scope = (
+    await database
+      .select({ telegramChatId: chats.telegramChatId })
+      .from(commitments)
+      .innerJoin(
+        chats,
+        and(eq(commitments.chatId, chats.id), eq(commitments.workspaceId, chats.workspaceId)),
+      )
+      .where(and(eq(commitments.id, commitmentId), eq(chats.isActive, true)))
+      .limit(1)
+  )[0];
+  if (!scope) {
+    throw new CommitmentUpdateError('COMMITMENT_NOT_FOUND');
+  }
+  return String(scope.telegramChatId);
+}
+
 export function createCommitmentActionCallbackHandler<TQueryResult extends PgQueryResultHKT>(input: Readonly<{
   callbackSigningSecret: string;
   database: RepositoryDatabase<TQueryResult>;
@@ -99,21 +120,24 @@ export function createCommitmentActionCallbackHandler<TQueryResult extends PgQue
       const currentAdminChecker = input.isCurrentChatAdmin ?? messenger.isCurrentChatAdmin ?? (() => Promise.resolve(false));
       if (resolvedCallback.kind === 'commitment') {
         const commitmentAuthorization = createAuthorizeCommitmentAction(input.database, currentAdminChecker);
+        const actionTelegramChatId = callback.message.chat.type === 'private'
+          ? await resolveCommitmentTelegramChatId(input.database, resolvedCallback.commitmentId)
+          : telegramChatId;
         if (signedCallback.action === 'reschedule') {
           await commitmentAuthorization({
             actor: { firstName: callback.from.first_name, telegramUserId },
             commitmentId: resolvedCallback.commitmentId,
-            telegramChatId,
+            telegramChatId: actionTelegramChatId,
           });
           await callbackTokens.claim(signedCallback);
           await createCommitmentRescheduleService(input.database, currentAdminChecker).begin({
             actorTelegramUserId: telegramUserId,
             commitmentId: resolvedCallback.commitmentId,
-            telegramChatId,
+            telegramChatId: actionTelegramChatId,
           });
           await messenger.answerCallbackQuery({
             callbackQueryId: callback.id,
-            text: 'Откройте личный чат с Keepword и отправьте новую строку due: <срок>.',
+            text: 'Откройте личный чат с Keepword и отправьте due: <будущий ISO-срок с timezone>.',
           });
           return;
         }
@@ -128,14 +152,14 @@ export function createCommitmentActionCallbackHandler<TQueryResult extends PgQue
         await commitmentAuthorization({
           actor: { firstName: callback.from.first_name, telegramUserId },
           commitmentId: resolvedCallback.commitmentId,
-          telegramChatId,
+          telegramChatId: actionTelegramChatId,
         });
         await callbackTokens.claim(signedCallback);
         await createAuthorizedCommitmentAction(input.database, currentAdminChecker)({
           action: signedCallback.action,
           actor: { firstName: callback.from.first_name, telegramUserId },
           commitmentId: resolvedCallback.commitmentId,
-          telegramChatId,
+          telegramChatId: actionTelegramChatId,
         });
         await messenger.answerCallbackQuery({ callbackQueryId: callback.id, text: 'Статус задачи обновлён.' });
         input.logger?.info('commitment_updated', {

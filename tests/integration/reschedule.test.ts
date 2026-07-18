@@ -52,8 +52,30 @@ test('reschedules an overdue commitment only for its assignee and reopens it wit
   const service = createCommitmentRescheduleService(database.db, () => Promise.resolve(false));
   await service.begin({ actorTelegramUserId: 9301, commitmentId: commitment.id, telegramChatId: '-1009301' });
 
-  await expect(service.apply({ actor: { firstName: 'Daniyar', telegramUserId: 9301 }, dueDateText: 'завтра' }))
-    .resolves.toMatchObject({ dueDateText: 'завтра', status: 'open' });
+  const futureDueAt = new Date(Date.now() + 24 * 60 * 60 * 1_000).toISOString();
+  await expect(service.apply({ actor: { firstName: 'Daniyar', telegramUserId: 9301 }, dueDateText: futureDueAt }))
+    .resolves.toMatchObject({ dueDateText: futureDueAt, dueAt: new Date(futureDueAt), status: 'open' });
+});
+
+test('rejects a reschedule due time that is not a future ISO timestamp', async () => {
+  const chat = await createConnectChat(database.db)({
+    adminTelegramUserId: '9303',
+    telegramChatId: '-1009303',
+    timezone: 'UTC',
+    title: 'Reschedule validation test',
+  });
+  const membership = (await database.db.select({ userId: chatMemberships.userId }).from(chatMemberships)
+    .where(and(eq(chatMemberships.chatId, chat.chatId), eq(chatMemberships.workspaceId, chat.workspaceId))).limit(1))[0];
+  if (!membership) throw new Error('Expected membership');
+  const commitment = (await database.db.insert(commitments).values({
+    assigneeUserId: membership.userId, chatId: chat.chatId, status: 'overdue', title: 'Проверить договор', workspaceId: chat.workspaceId,
+  }).returning())[0];
+  if (!commitment) throw new Error('Expected commitment');
+  const service = createCommitmentRescheduleService(database.db, () => Promise.resolve(false));
+  await service.begin({ actorTelegramUserId: 9303, commitmentId: commitment.id, telegramChatId: '-1009303' });
+
+  await expect(service.apply({ actor: { firstName: 'Daniyar', telegramUserId: 9303 }, dueDateText: 'завтра' }))
+    .rejects.toMatchObject({ code: 'RESCHEDULE_UNAVAILABLE' });
 });
 
 test('supersedes an earlier reschedule session for the same Telegram actor', async () => {
@@ -77,9 +99,10 @@ test('supersedes an earlier reschedule session for the same Telegram actor', asy
   await service.begin({ actorTelegramUserId: 9302, commitmentId: first.id, telegramChatId: '-1009302' });
   await service.begin({ actorTelegramUserId: 9302, commitmentId: second.id, telegramChatId: '-1009302' });
 
-  await service.apply({ actor: { firstName: 'Daniyar', telegramUserId: 9302 }, dueDateText: 'пятница' });
+  const futureDueAt = new Date(Date.now() + 24 * 60 * 60 * 1_000).toISOString();
+  await service.apply({ actor: { firstName: 'Daniyar', telegramUserId: 9302 }, dueDateText: futureDueAt });
 
   const rows = await database.db.select().from(commitments).where(eq(commitments.chatId, chat.chatId));
   expect(rows.find((row) => row.id === first.id)).toMatchObject({ dueDateText: 'вчера', status: 'overdue' });
-  expect(rows.find((row) => row.id === second.id)).toMatchObject({ dueDateText: 'пятница', status: 'open' });
+  expect(rows.find((row) => row.id === second.id)).toMatchObject({ dueDateText: futureDueAt, dueAt: new Date(futureDueAt), status: 'open' });
 });

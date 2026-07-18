@@ -150,7 +150,7 @@ export function createPrivateUpdateHandler<TQueryResult extends PgQueryResultHKT
       if (!dueMatch?.[1]) {
         await messenger.sendPrivateMessage({
           telegramUserId: message.from.id,
-          text: 'Укажите новый срок в формате due: <срок>.',
+          text: 'Укажите будущий срок в формате due: <ISO timestamp с timezone>.',
         });
         return;
       }

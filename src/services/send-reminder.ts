@@ -1,0 +1,94 @@
+import type { PgQueryResultHKT } from 'drizzle-orm/pg-core';
+
+import type { Logger } from '../observability/logger.js';
+import { createDeliveriesRepository } from '../repositories/deliveries.js';
+import type { RepositoryDatabase } from '../repositories/database.js';
+import { createCallbackTokenService } from './callback-tokens.js';
+import { renderReminderCard, type InlineKeyboardMarkup } from '../telegram/messages.js';
+
+export type ReminderMessenger = Readonly<{
+  sendPrivateMessage: (input: Readonly<{
+    replyMarkup: InlineKeyboardMarkup;
+    telegramUserId: number;
+    text: string;
+  }>) => Promise<void>;
+}>;
+
+export type SendReminder = (input: Readonly<{
+  assigneeUserId: string;
+  assigneeTelegramUserId: number;
+  chatId: string;
+  commitmentId: string;
+  dueDateText: string | null;
+  idempotencyKey: string;
+  kind: 'due' | 'overdue';
+  status: 'open' | 'overdue';
+  title: string;
+  workspaceId: string;
+}>) => Promise<'already-sent' | 'failed' | 'in-progress' | 'sent'>;
+
+export function createSendReminder<TQueryResult extends PgQueryResultHKT>(input: Readonly<{
+  callbackSigningSecret: string;
+  database: RepositoryDatabase<TQueryResult>;
+  logger?: Logger;
+  messenger: ReminderMessenger;
+}>): SendReminder {
+  const deliveries = createDeliveriesRepository(input.database);
+  const callbacks = createCallbackTokenService(input.database);
+
+  return async (reminder) => {
+    const claim = await deliveries.createAndClaimDelivery({
+      chatId: reminder.chatId,
+      commitmentId: reminder.commitmentId,
+      idempotencyKey: reminder.idempotencyKey,
+      kind: `reminder_${reminder.kind}`,
+      userId: reminder.assigneeUserId,
+      workspaceId: reminder.workspaceId,
+    });
+    if (claim !== 'claimed') {
+      return claim;
+    }
+    try {
+      const nonces = await callbacks.issueCommitmentCallbacks({
+        actions: ['complete', 'block', 'cancel', 'reschedule'],
+        commitmentId: reminder.commitmentId,
+      });
+      if (!nonces.complete || !nonces.block || !nonces.cancel || !nonces.reschedule) {
+        throw new Error('Could not issue reminder callbacks');
+      }
+      const card = renderReminderCard({
+        dueDateText: reminder.dueDateText,
+        status: reminder.status,
+        title: reminder.title,
+      }, {
+        block: nonces.block,
+        cancel: nonces.cancel,
+        complete: nonces.complete,
+        reschedule: nonces.reschedule,
+      }, input.callbackSigningSecret);
+      await input.messenger.sendPrivateMessage({
+        replyMarkup: card.replyMarkup,
+        telegramUserId: reminder.assigneeTelegramUserId,
+        text: card.text,
+      });
+      await deliveries.markSent(reminder.idempotencyKey);
+      input.logger?.info('reminder_sent', {
+        commitmentId: reminder.commitmentId,
+        result: 'success',
+        telegramUserId: String(reminder.assigneeTelegramUserId),
+        workspaceId: reminder.workspaceId,
+      });
+      return 'sent';
+    } catch {
+      await deliveries.recordFailure(reminder.idempotencyKey, 'TELEGRAM_SEND_FAILED');
+      input.logger?.error('reminder_delivery_failed', {
+        commitmentId: reminder.commitmentId,
+        errorCode: 'TELEGRAM_SEND_FAILED',
+        result: 'failure',
+        telegramUserId: String(reminder.assigneeTelegramUserId),
+        workspaceId: reminder.workspaceId,
+      });
+      return 'failed';
+    }
+  };
+}

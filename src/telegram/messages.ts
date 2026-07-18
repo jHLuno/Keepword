@@ -23,6 +23,12 @@ type CommitmentAction = 'block' | 'cancel' | 'complete' | 'open' | 'reschedule';
 
 export type CommitmentCallbackNonces = Readonly<Record<CommitmentAction, string>>;
 
+export type ReminderCard = Readonly<{
+  dueDateText: string | null;
+  status: 'open' | 'overdue';
+  title: string;
+}>;
+
 export const onboardingCardText = [
   '👋 Keepword подключён',
   '',
@@ -118,5 +124,29 @@ export function renderCommitmentActions(
       firstRow,
       [{ callback_data: createSignedCallback('reschedule', callbackNonces.reschedule, callbackSigningSecret), text: 'Перенести срок' }],
     ],
+  };
+}
+
+export function renderReminderCard(
+  reminder: ReminderCard,
+  callbackNonces: Readonly<Pick<CommitmentCallbackNonces, 'block' | 'cancel' | 'complete' | 'reschedule'>>,
+  callbackSigningSecret: string,
+): Readonly<{
+  replyMarkup: InlineKeyboardMarkup;
+  text: string;
+}> {
+  const dueLine = reminder.dueDateText?.trim() ? `\nСрок: ${reminder.dueDateText.trim()}` : '';
+  const heading = reminder.status === 'overdue'
+    ? '⚠️ Срок обязательства истёк'
+    : '⏰ Напоминание о договорённости';
+  return {
+    replyMarkup: renderCommitmentActions(reminder.status, {
+      block: callbackNonces.block,
+      cancel: callbackNonces.cancel,
+      complete: callbackNonces.complete,
+      open: callbackNonces.complete,
+      reschedule: callbackNonces.reschedule,
+    }, callbackSigningSecret),
+    text: `${heading}\n\n${reminder.title}${dueLine}`,
   };
 }

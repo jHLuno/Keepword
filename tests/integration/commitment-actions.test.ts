@@ -148,4 +148,30 @@ describe('commitment status actions', () => {
     await expect(createUpdateCommitment(database.db)({ ...fixture, status: 'open' }))
       .rejects.toMatchObject({ code: 'INVALID_STATUS_TRANSITION' });
   });
+
+  test('authorizes an assignee status action from the private reminder card', async () => {
+    const fixture = await createOpenCommitment();
+    const nonce = (await createCallbackTokenService(database.db).issueCommitmentCallbacks({
+      actions: ['complete'], commitmentId: fixture.commitmentId,
+    })).complete;
+    if (!nonce) throw new Error('Expected lifecycle nonce');
+    const handler = createCommitmentActionCallbackHandler({
+      callbackSigningSecret: 'callback-test-secret',
+      database: database.db,
+      isCurrentChatAdmin: () => Promise.resolve(false),
+    });
+
+    await handler({
+      payload: { callback_query: {
+        data: createSignedCallback('complete', nonce, 'callback-test-secret'),
+        from: { first_name: 'Assignee', id: 8201 },
+        id: 'private-reminder-complete',
+        message: { chat: { id: 8201, type: 'private' }, message_id: 1 },
+      } },
+      updateId: 82_001,
+    }, { answerCallbackQuery: () => Promise.resolve() });
+
+    const updated = (await database.db.select().from(commitments).where(eq(commitments.id, fixture.commitmentId)))[0];
+    expect(updated).toMatchObject({ status: 'completed' });
+  });
 });

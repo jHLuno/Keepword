@@ -19,6 +19,8 @@ export type FakeTelegram = Readonly<{
   notificationInvites: readonly RecordedOnboardingCard[];
   onboardingCards: readonly RecordedOnboardingCard[];
   privateMessages: readonly string[];
+  privateMessagesFor: (telegramUserId: number) => readonly string[];
+  sendPrivateMessage: (input: Readonly<{ telegramUserId: number; text: string }>) => Promise<void>;
   privateSuggestionReplies: readonly Readonly<{
     replyMarkup: InlineKeyboardMarkup;
     replyToTelegramMessageId: string;
@@ -42,6 +44,7 @@ export function createFakeTelegram(options: FakeTelegramOptions = {}): FakeTeleg
   const notificationInvites: RecordedOnboardingCard[] = [];
   const onboardingCards: RecordedOnboardingCard[] = [];
   const privateMessages: string[] = [];
+  const privateMessagesByUserId = new Map<number, string[]>();
   const privateSuggestionReplies: Array<{
     replyMarkup: InlineKeyboardMarkup;
     replyToTelegramMessageId: string;
@@ -52,6 +55,13 @@ export function createFakeTelegram(options: FakeTelegramOptions = {}): FakeTeleg
   const suggestionReplies: SuggestionReply[] = [];
   let remainingOnboardingCardFailures = options.onboardingCardFailuresBeforeSuccess ?? 0;
   let remainingFailures = options.failuresBeforeSuccess ?? 0;
+
+  function recordPrivateMessage(input: Readonly<{ telegramUserId: number; text: string }>): void {
+    privateMessages.push(input.text);
+    const messagesForUser = privateMessagesByUserId.get(input.telegramUserId) ?? [];
+    messagesForUser.push(input.text);
+    privateMessagesByUserId.set(input.telegramUserId, messagesForUser);
+  }
 
   const messenger: GroupMessenger = {
     isCurrentChatAdmin({ telegramUserId }) {
@@ -105,7 +115,7 @@ export function createFakeTelegram(options: FakeTelegramOptions = {}): FakeTeleg
 
     sendPrivateMessage(input) {
       const { text } = input;
-      privateMessages.push(text);
+      recordPrivateMessage(input);
       if (input.replyMarkup && input.replyToTelegramMessageId) {
         privateSuggestionReplies.push({
           replyMarkup: input.replyMarkup,
@@ -149,6 +159,13 @@ export function createFakeTelegram(options: FakeTelegramOptions = {}): FakeTeleg
     notificationInvites,
     onboardingCards,
     privateMessages,
+    privateMessagesFor(telegramUserId) {
+      return privateMessagesByUserId.get(telegramUserId) ?? [];
+    },
+    sendPrivateMessage(input) {
+      recordPrivateMessage(input);
+      return Promise.resolve();
+    },
     privateSuggestionReplies,
     suggestionReplies,
     telegramAdapterFactory,
