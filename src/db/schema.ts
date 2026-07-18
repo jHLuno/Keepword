@@ -1,6 +1,7 @@
 import {
   bigint,
   boolean,
+  foreignKey,
   index,
   pgEnum,
   pgTable,
@@ -54,6 +55,7 @@ export const chats = pgTable(
   },
   (table) => [
     unique('chats_telegram_chat_id_unique').on(table.telegramChatId),
+    unique('chats_id_workspace_unique').on(table.id, table.workspaceId),
     index('chats_workspace_id_idx').on(table.workspaceId),
   ],
 );
@@ -80,9 +82,7 @@ export const chatMemberships = pgTable(
     workspaceId: uuid('workspace_id')
       .notNull()
       .references(() => workspaces.id, { onDelete: 'cascade' }),
-    chatId: uuid('chat_id')
-      .notNull()
-      .references(() => chats.id, { onDelete: 'cascade' }),
+    chatId: uuid('chat_id').notNull(),
     userId: uuid('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
@@ -94,7 +94,17 @@ export const chatMemberships = pgTable(
   },
   (table) => [
     unique('chat_memberships_chat_user_unique').on(table.chatId, table.userId),
+    unique('chat_memberships_chat_workspace_user_unique').on(
+      table.chatId,
+      table.workspaceId,
+      table.userId,
+    ),
     index('chat_memberships_workspace_chat_idx').on(table.workspaceId, table.chatId),
+    foreignKey({
+      name: 'chat_memberships_chat_workspace_fkey',
+      columns: [table.chatId, table.workspaceId],
+      foreignColumns: [chats.id, chats.workspaceId],
+    }).onDelete('cascade'),
   ],
 );
 
@@ -105,11 +115,9 @@ export const sourceMessages = pgTable(
     workspaceId: uuid('workspace_id')
       .notNull()
       .references(() => workspaces.id, { onDelete: 'cascade' }),
-    chatId: uuid('chat_id')
-      .notNull()
-      .references(() => chats.id, { onDelete: 'cascade' }),
+    chatId: uuid('chat_id').notNull(),
     telegramMessageId: bigint('telegram_message_id', { mode: 'number' }).notNull(),
-    authorUserId: uuid('author_user_id').references(() => users.id, { onDelete: 'set null' }),
+    authorUserId: uuid('author_user_id').notNull(),
     messageText: text('message_text'),
     sentAt: timestamp('sent_at', { withTimezone: true }).notNull(),
     usedAsSource: boolean('used_as_source').notNull().default(false),
@@ -118,7 +126,18 @@ export const sourceMessages = pgTable(
   },
   (table) => [
     unique('source_messages_chat_telegram_message_unique').on(table.chatId, table.telegramMessageId),
+    unique('source_messages_id_workspace_chat_unique').on(table.id, table.workspaceId, table.chatId),
     index('source_messages_workspace_chat_sent_idx').on(table.workspaceId, table.chatId, table.sentAt),
+    foreignKey({
+      name: 'source_messages_chat_workspace_fkey',
+      columns: [table.chatId, table.workspaceId],
+      foreignColumns: [chats.id, chats.workspaceId],
+    }).onDelete('cascade'),
+    foreignKey({
+      name: 'source_messages_author_membership_fkey',
+      columns: [table.chatId, table.workspaceId, table.authorUserId],
+      foreignColumns: [chatMemberships.chatId, chatMemberships.workspaceId, chatMemberships.userId],
+    }),
   ],
 );
 
@@ -129,15 +148,11 @@ export const commitmentSuggestions = pgTable(
     workspaceId: uuid('workspace_id')
       .notNull()
       .references(() => workspaces.id, { onDelete: 'cascade' }),
-    chatId: uuid('chat_id')
-      .notNull()
-      .references(() => chats.id, { onDelete: 'cascade' }),
-    sourceMessageId: uuid('source_message_id')
-      .notNull()
-      .references(() => sourceMessages.id, { onDelete: 'cascade' }),
+    chatId: uuid('chat_id').notNull(),
+    sourceMessageId: uuid('source_message_id').notNull(),
     title: text('title').notNull(),
     description: text('description'),
-    assigneeUserId: uuid('assignee_user_id').references(() => users.id, { onDelete: 'set null' }),
+    assigneeUserId: uuid('assignee_user_id'),
     dueAt: timestamp('due_at', { withTimezone: true }),
     dueDateText: text('due_date_text'),
     confidence: text('confidence').notNull(),
@@ -154,6 +169,21 @@ export const commitmentSuggestions = pgTable(
       table.status,
     ),
     index('commitment_suggestions_chat_assignee_due_idx').on(table.chatId, table.assigneeUserId, table.dueAt),
+    foreignKey({
+      name: 'commitment_suggestions_chat_workspace_fkey',
+      columns: [table.chatId, table.workspaceId],
+      foreignColumns: [chats.id, chats.workspaceId],
+    }).onDelete('cascade'),
+    foreignKey({
+      name: 'commitment_suggestions_source_scope_fkey',
+      columns: [table.sourceMessageId, table.workspaceId, table.chatId],
+      foreignColumns: [sourceMessages.id, sourceMessages.workspaceId, sourceMessages.chatId],
+    }).onDelete('cascade'),
+    foreignKey({
+      name: 'commitment_suggestions_assignee_membership_fkey',
+      columns: [table.chatId, table.workspaceId, table.assigneeUserId],
+      foreignColumns: [chatMemberships.chatId, chatMemberships.workspaceId, chatMemberships.userId],
+    }),
   ],
 );
 
@@ -164,16 +194,14 @@ export const commitments = pgTable(
     workspaceId: uuid('workspace_id')
       .notNull()
       .references(() => workspaces.id, { onDelete: 'cascade' }),
-    chatId: uuid('chat_id')
-      .notNull()
-      .references(() => chats.id, { onDelete: 'cascade' }),
+    chatId: uuid('chat_id').notNull(),
     title: text('title').notNull(),
     description: text('description'),
-    assigneeUserId: uuid('assignee_user_id').references(() => users.id, { onDelete: 'set null' }),
+    assigneeUserId: uuid('assignee_user_id'),
     dueAt: timestamp('due_at', { withTimezone: true }),
     dueDateText: text('due_date_text'),
     status: commitmentStatus('status').notNull().default('open'),
-    confirmedByUserId: uuid('confirmed_by_user_id').references(() => users.id, { onDelete: 'set null' }),
+    confirmedByUserId: uuid('confirmed_by_user_id'),
     confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
     completedAt: timestamp('completed_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -182,6 +210,22 @@ export const commitments = pgTable(
   (table) => [
     index('commitments_workspace_chat_status_idx').on(table.workspaceId, table.chatId, table.status),
     index('commitments_chat_assignee_due_idx').on(table.chatId, table.assigneeUserId, table.dueAt),
+    unique('commitments_id_workspace_chat_unique').on(table.id, table.workspaceId, table.chatId),
+    foreignKey({
+      name: 'commitments_chat_workspace_fkey',
+      columns: [table.chatId, table.workspaceId],
+      foreignColumns: [chats.id, chats.workspaceId],
+    }).onDelete('cascade'),
+    foreignKey({
+      name: 'commitments_assignee_membership_fkey',
+      columns: [table.chatId, table.workspaceId, table.assigneeUserId],
+      foreignColumns: [chatMemberships.chatId, chatMemberships.workspaceId, chatMemberships.userId],
+    }),
+    foreignKey({
+      name: 'commitments_confirmer_membership_fkey',
+      columns: [table.chatId, table.workspaceId, table.confirmedByUserId],
+      foreignColumns: [chatMemberships.chatId, chatMemberships.workspaceId, chatMemberships.userId],
+    }),
   ],
 );
 
@@ -192,21 +236,30 @@ export const commitmentSources = pgTable(
     workspaceId: uuid('workspace_id')
       .notNull()
       .references(() => workspaces.id, { onDelete: 'cascade' }),
-    chatId: uuid('chat_id')
-      .notNull()
-      .references(() => chats.id, { onDelete: 'cascade' }),
-    commitmentId: uuid('commitment_id')
-      .notNull()
-      .references(() => commitments.id, { onDelete: 'cascade' }),
-    sourceMessageId: uuid('source_message_id')
-      .notNull()
-      .references(() => sourceMessages.id, { onDelete: 'cascade' }),
+    chatId: uuid('chat_id').notNull(),
+    commitmentId: uuid('commitment_id').notNull(),
+    sourceMessageId: uuid('source_message_id').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     unique('commitment_sources_commitment_source_unique').on(table.commitmentId, table.sourceMessageId),
     index('commitment_sources_workspace_chat_idx').on(table.workspaceId, table.chatId),
+    foreignKey({
+      name: 'commitment_sources_chat_workspace_fkey',
+      columns: [table.chatId, table.workspaceId],
+      foreignColumns: [chats.id, chats.workspaceId],
+    }).onDelete('cascade'),
+    foreignKey({
+      name: 'commitment_sources_commitment_scope_fkey',
+      columns: [table.commitmentId, table.workspaceId, table.chatId],
+      foreignColumns: [commitments.id, commitments.workspaceId, commitments.chatId],
+    }).onDelete('cascade'),
+    foreignKey({
+      name: 'commitment_sources_source_scope_fkey',
+      columns: [table.sourceMessageId, table.workspaceId, table.chatId],
+      foreignColumns: [sourceMessages.id, sourceMessages.workspaceId, sourceMessages.chatId],
+    }).onDelete('cascade'),
   ],
 );
 
@@ -217,19 +270,27 @@ export const onboardingTokens = pgTable(
     workspaceId: uuid('workspace_id')
       .notNull()
       .references(() => workspaces.id, { onDelete: 'cascade' }),
-    chatId: uuid('chat_id')
-      .notNull()
-      .references(() => chats.id, { onDelete: 'cascade' }),
+    chatId: uuid('chat_id').notNull(),
     tokenHash: text('token_hash').notNull(),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     usedAt: timestamp('used_at', { withTimezone: true }),
-    usedByUserId: uuid('used_by_user_id').references(() => users.id, { onDelete: 'set null' }),
+    usedByUserId: uuid('used_by_user_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     unique('onboarding_tokens_token_hash_unique').on(table.tokenHash),
     index('onboarding_tokens_workspace_chat_expiry_idx').on(table.workspaceId, table.chatId, table.expiresAt),
+    foreignKey({
+      name: 'onboarding_tokens_chat_workspace_fkey',
+      columns: [table.chatId, table.workspaceId],
+      foreignColumns: [chats.id, chats.workspaceId],
+    }).onDelete('cascade'),
+    foreignKey({
+      name: 'onboarding_tokens_consumer_membership_fkey',
+      columns: [table.chatId, table.workspaceId, table.usedByUserId],
+      foreignColumns: [chatMemberships.chatId, chatMemberships.workspaceId, chatMemberships.userId],
+    }),
   ],
 );
 
@@ -237,13 +298,15 @@ export const notificationDeliveries = pgTable(
   'notification_deliveries',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    workspaceId: uuid('workspace_id').references(() => workspaces.id, { onDelete: 'cascade' }),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
     idempotencyKey: text('idempotency_key').notNull(),
     kind: text('kind').notNull(),
     status: text('status').notNull().default('pending'),
-    commitmentId: uuid('commitment_id').references(() => commitments.id, { onDelete: 'cascade' }),
-    userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
-    chatId: uuid('chat_id').references(() => chats.id, { onDelete: 'cascade' }),
+    commitmentId: uuid('commitment_id'),
+    userId: uuid('user_id'),
+    chatId: uuid('chat_id').notNull(),
     sentAt: timestamp('sent_at', { withTimezone: true }),
     failedAt: timestamp('failed_at', { withTimezone: true }),
     errorCode: text('error_code'),
@@ -253,6 +316,21 @@ export const notificationDeliveries = pgTable(
   (table) => [
     unique('notification_deliveries_idempotency_key_unique').on(table.idempotencyKey),
     index('notification_deliveries_scope_status_idx').on(table.workspaceId, table.chatId, table.userId, table.status),
+    foreignKey({
+      name: 'notification_deliveries_chat_workspace_fkey',
+      columns: [table.chatId, table.workspaceId],
+      foreignColumns: [chats.id, chats.workspaceId],
+    }).onDelete('cascade'),
+    foreignKey({
+      name: 'notification_deliveries_commitment_scope_fkey',
+      columns: [table.commitmentId, table.workspaceId, table.chatId],
+      foreignColumns: [commitments.id, commitments.workspaceId, commitments.chatId],
+    }).onDelete('cascade'),
+    foreignKey({
+      name: 'notification_deliveries_recipient_membership_fkey',
+      columns: [table.chatId, table.workspaceId, table.userId],
+      foreignColumns: [chatMemberships.chatId, chatMemberships.workspaceId, chatMemberships.userId],
+    }),
   ],
 );
 
