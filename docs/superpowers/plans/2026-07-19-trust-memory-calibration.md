@@ -16,7 +16,7 @@
 - Keep original suggestion snapshots immutable; never log message text or secrets.
 - Exclude cancelled and no-exact-deadline commitments from reliability.
 - Use a 30-day rolling window and a minimum of three eligible commitments before showing a reliability line.
-- Calibration is observation-only until a workspace has 30 resolved suggestions in 90 days.
+- Calibration is observation-only until a chat has 30 resolved suggestions in 90 days.
 
 ---
 
@@ -43,8 +43,8 @@
 
 **Files:** Modify `src/jobs/digests.ts`, `src/services/send-digest.ts`, `src/telegram/messages.ts`; add calibration repository/query module and digest tests.
 
-- [ ] Write RED digest tests for same-chat counts, workspace isolation, 30-decision/90-day gating, and no disclosure to non-admins.
-- [ ] Derive accepted-as-proposed, edited-before-confirmation, and rejected counts from `suggestion_events` for the active chat only.
+- [ ] Write RED digest tests for same-chat counts, cross-chat isolation within one workspace, 30-decision/90-day gating, and no disclosure to non-admins.
+- [ ] Derive accepted-as-proposed, edited-before-confirmation, and rejected counts from `suggestion_events` for the exact active workspace/chat pair only.
 - [ ] Render a concise private admin calibration section only after the sample threshold.
 - [ ] Verify personal digests and group messages never include calibration data.
 

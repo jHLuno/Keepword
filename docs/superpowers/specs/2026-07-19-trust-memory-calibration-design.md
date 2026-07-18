@@ -52,9 +52,9 @@ Every suggestion records:
 
 This creates agreement memory: what the team agreed to, how it changed, who made the decision, and how the agreement ended. It is not a raw chat-history store and never exports events across chats.
 
-## 3. Workspace calibration
+## 3. Team-local calibration
 
-Calibration metrics are derived only from `suggestion_events` in the same workspace and chat:
+Calibration metrics are derived only from `suggestion_events` in the same `workspace_id` and `chat_id` pair:
 
 - confirm-as-proposed rate;
 - edited-before-confirmation rate;
@@ -63,10 +63,10 @@ Calibration metrics are derived only from `suggestion_events` in the same worksp
 
 The first production version is observation plus policy readiness:
 
-- Do not adjust behavior until a workspace has at least 30 resolved suggestions in the preceding 90 days.
+- Do not adjust behavior until a chat has at least 30 resolved suggestions in the preceding 90 days.
 - Retain the current global safe default: public suggestions require `high` confidence.
 - Show calibration only in a private admin digest as an aggregate, for example: `Keepword accuracy: 78% accepted as proposed · 14% edited · 8% rejected`.
-- The next calibration iteration adds a numeric confidence score and adjusts a workspace-local suggestion threshold by small bounded steps. It must never learn from another workspace or lower below the global safe threshold.
+- The next calibration iteration adds a numeric confidence score and adjusts a chat-local suggestion threshold by small bounded steps. It must never learn from another chat or lower below the global safe threshold.
 
 ## 4. Reliability: keeping your word
 
