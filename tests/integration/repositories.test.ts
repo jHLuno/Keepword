@@ -268,7 +268,7 @@ describe('repositories', () => {
       userId: fixture.userId,
       workspaceId: fixture.workspaceId,
     });
-    await deliveries.recordFailure(deliveryKey, 'SETUP_FAILED');
+    await deliveries.releaseClaim(deliveryKey, 'SETUP_FAILED');
 
     await expect(deliveries.createAndClaimDelivery({
       chatId: fixture.chatId,

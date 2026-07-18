@@ -134,30 +134,54 @@ describe('private commitment reminders', () => {
       .toMatchObject({ status: 'overdue' });
   });
 
-  test('records a safe delivery failure and retries the claimed reminder', async () => {
+  test('does not retry a reminder when Telegram rejects after sending begins', async () => {
     const dueNow = new Date('2026-07-18T14:00:00.000Z');
     const fixture = await createFixture({ dueAt: dueNow });
-    let failuresRemaining = 1;
-    const messages: string[] = [];
+    let telegramAttempts = 0;
     const runReminderJob = createReminderJob({
       callbackSigningSecret: 'callback-test-secret',
       database: database.db,
       messenger: { sendPrivateMessage: ({ text }) => {
-        if (failuresRemaining > 0) {
-          failuresRemaining -= 1;
-          return Promise.reject(new Error('Fake Telegram delivery failure'));
-        }
-        messages.push(text);
-        return Promise.resolve();
+        void text;
+        telegramAttempts += 1;
+        return Promise.reject(new Error('Telegram may have accepted the reminder'));
       } },
     });
 
     await runReminderJob(dueNow);
     await runReminderJob(dueNow);
 
-    expect(messages).toHaveLength(1);
+    expect(telegramAttempts).toBe(1);
     expect((await database.db.select().from(notificationDeliveries).where(eq(notificationDeliveries.commitmentId, fixture.commitmentId)))[0])
-      .toMatchObject({ status: 'sent', errorCode: null });
+      .toMatchObject({ status: 'processing', errorCode: null });
+  });
+
+  test('retries when starting delivery fails before Telegram is called', async () => {
+    const dueNow = new Date('2026-07-18T14:30:00.000Z');
+    const fixture = await createFixture({ dueAt: dueNow });
+    const deliveries = createDeliveriesRepository(database.db);
+    let telegramSends = 0;
+    const failedStartConfig = {
+      callbackSigningSecret: 'callback-test-secret',
+      database: database.db,
+      deliveries: { ...deliveries, markSending: () => Promise.reject(new Error('Could not start delivery')) },
+      messenger: { sendPrivateMessage: () => { telegramSends += 1; return Promise.resolve(); } },
+    };
+    const withFailedStart = createReminderJob(failedStartConfig);
+
+    await withFailedStart(dueNow);
+    expect(telegramSends).toBe(0);
+    expect((await database.db.select().from(notificationDeliveries).where(eq(notificationDeliveries.commitmentId, fixture.commitmentId)))[0])
+      .toMatchObject({ errorCode: 'DELIVERY_START_FAILED', status: 'failed' });
+
+    const retry = createReminderJob({
+      callbackSigningSecret: 'callback-test-secret',
+      database: database.db,
+      messenger: { sendPrivateMessage: () => { telegramSends += 1; return Promise.resolve(); } },
+    });
+    await retry(dueNow);
+
+    expect(telegramSends).toBe(1);
   });
 
   test('does not retry after Telegram succeeds when marking delivery sent fails', async () => {

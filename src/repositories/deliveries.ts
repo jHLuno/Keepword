@@ -20,7 +20,7 @@ export type DeliveriesRepository = Readonly<{
   }>) => Promise<DeliveryClaimResult>;
   markSending: (key: string) => Promise<void>;
   markSent: (key: string) => Promise<void>;
-  recordFailure: (key: string, errorCode: string) => Promise<void>;
+  releaseClaim: (key: string, errorCode: string) => Promise<void>;
 }>;
 
 // A `claimed` delivery has not entered the external Telegram call and can be retried.
@@ -130,15 +130,12 @@ export function createDeliveriesRepository<TQueryResult extends PgQueryResultHKT
         .where(and(eq(notificationDeliveries.idempotencyKey, key), eq(notificationDeliveries.status, 'processing')));
     },
 
-    async recordFailure(key, errorCode) {
+    async releaseClaim(key, errorCode) {
       const failedAt = new Date();
       await database
         .update(notificationDeliveries)
         .set({ errorCode, failedAt, status: 'failed', updatedAt: failedAt })
-        .where(and(eq(notificationDeliveries.idempotencyKey, key), or(
-          eq(notificationDeliveries.status, 'claimed'),
-          eq(notificationDeliveries.status, 'processing'),
-        )));
+        .where(and(eq(notificationDeliveries.idempotencyKey, key), eq(notificationDeliveries.status, 'claimed')));
     },
   };
 }

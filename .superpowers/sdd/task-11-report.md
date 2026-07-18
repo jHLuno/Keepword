@@ -68,3 +68,14 @@
 2. Green: the delivery repository separates `claimed` from `processing`; the targeted repository, reminder, and digest suites pass 18 tests.
 3. A second red test caught that pre-send setup failures left a `claimed` row stranded; `recordFailure` now accepts both pre-send and send-started states while `markSent` remains restricted to `processing`.
 4. `pnpm typecheck` and `pnpm lint` pass after the fix.
+
+## Reviewer follow-up — post-send rejection is uncertain
+
+- A Telegram messenger rejection now leaves a `processing` delivery unchanged. Since the request may have reached Telegram, both reminders and digests return `delivery-uncertain`, emit a reconciliation event, and never retry that idempotency key automatically.
+- `releaseClaim` replaces the broader failure transition and updates only a pre-send `claimed` row. Reminder setup errors and an unsuccessful `markSending` can therefore be retried without treating an external send as failed.
+- Added reminder and digest regressions: a rejected messenger is invoked exactly once across two job runs and persists `processing`; a failing `markSending` makes no Telegram call, releases the claim, and the next job run succeeds once.
+
+### Reviewer follow-up TDD and verification
+
+1. Red: both new post-send-rejection tests observed two Telegram attempts, proving the old common catch block changed `processing` to `failed` and retried.
+2. Green: focused digest, reminder, and delivery-repository tests pass (20 tests), plus strict typecheck and lint.

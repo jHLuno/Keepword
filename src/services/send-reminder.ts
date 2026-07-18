@@ -49,6 +49,7 @@ export function createSendReminder<TQueryResult extends PgQueryResultHKT>(input:
     if (claim !== 'claimed') {
       return claim;
     }
+    let card: ReturnType<typeof renderReminderCard>;
     try {
       const nonces = await callbacks.issueCommitmentCallbacks({
         actions: ['complete', 'block', 'cancel', 'reschedule'],
@@ -57,7 +58,7 @@ export function createSendReminder<TQueryResult extends PgQueryResultHKT>(input:
       if (!nonces.complete || !nonces.block || !nonces.cancel || !nonces.reschedule) {
         throw new Error('Could not issue reminder callbacks');
       }
-      const card = renderReminderCard({
+      card = renderReminderCard({
         dueDateText: reminder.dueDateText,
         status: reminder.status,
         title: reminder.title,
@@ -67,22 +68,45 @@ export function createSendReminder<TQueryResult extends PgQueryResultHKT>(input:
         complete: nonces.complete,
         reschedule: nonces.reschedule,
       }, input.callbackSigningSecret);
+    } catch {
+      await deliveries.releaseClaim(reminder.idempotencyKey, 'REMINDER_SETUP_FAILED');
+      input.logger?.error('reminder_delivery_failed', {
+        commitmentId: reminder.commitmentId,
+        errorCode: 'REMINDER_SETUP_FAILED',
+        result: 'failure',
+        telegramUserId: String(reminder.assigneeTelegramUserId),
+        workspaceId: reminder.workspaceId,
+      });
+      return 'failed';
+    }
+    try {
       await deliveries.markSending(reminder.idempotencyKey);
+    } catch {
+      await deliveries.releaseClaim(reminder.idempotencyKey, 'DELIVERY_START_FAILED');
+      input.logger?.error('reminder_delivery_failed', {
+        commitmentId: reminder.commitmentId,
+        errorCode: 'DELIVERY_START_FAILED',
+        result: 'failure',
+        telegramUserId: String(reminder.assigneeTelegramUserId),
+        workspaceId: reminder.workspaceId,
+      });
+      return 'failed';
+    }
+    try {
       await input.messenger.sendPrivateMessage({
         replyMarkup: card.replyMarkup,
         telegramUserId: reminder.assigneeTelegramUserId,
         text: card.text,
       });
     } catch {
-      await deliveries.recordFailure(reminder.idempotencyKey, 'TELEGRAM_SEND_FAILED');
-      input.logger?.error('reminder_delivery_failed', {
+      input.logger?.error('reminder_delivery_reconciliation_needed', {
         commitmentId: reminder.commitmentId,
-        errorCode: 'TELEGRAM_SEND_FAILED',
+        errorCode: 'TELEGRAM_SEND_STATE_UNCONFIRMED',
         result: 'failure',
         telegramUserId: String(reminder.assigneeTelegramUserId),
         workspaceId: reminder.workspaceId,
       });
-      return 'failed';
+      return 'delivery-uncertain';
     }
     try {
       await deliveries.markSent(reminder.idempotencyKey);

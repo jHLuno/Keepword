@@ -179,16 +179,26 @@ export function createSendDigest<TQueryResult extends PgQueryResultHKT>(input: R
     }
     try {
       await deliveries.markSending(digest.idempotencyKey);
-      await input.messenger.sendPrivateMessage({ telegramUserId: digest.telegramUserId, text: digest.text });
     } catch {
-      await deliveries.recordFailure(digest.idempotencyKey, 'TELEGRAM_SEND_FAILED');
+      await deliveries.releaseClaim(digest.idempotencyKey, 'DELIVERY_START_FAILED');
       input.logger?.error('daily_digest_failed', {
-        errorCode: 'TELEGRAM_SEND_FAILED',
+        errorCode: 'DELIVERY_START_FAILED',
         result: 'failure',
         telegramUserId: String(digest.telegramUserId),
         workspaceId: digest.workspaceId,
       });
       return 'failed';
+    }
+    try {
+      await input.messenger.sendPrivateMessage({ telegramUserId: digest.telegramUserId, text: digest.text });
+    } catch {
+      input.logger?.error('daily_digest_reconciliation_needed', {
+        errorCode: 'TELEGRAM_SEND_STATE_UNCONFIRMED',
+        result: 'failure',
+        telegramUserId: String(digest.telegramUserId),
+        workspaceId: digest.workspaceId,
+      });
+      return 'delivery-uncertain';
     }
     try {
       await deliveries.markSent(digest.idempotencyKey);

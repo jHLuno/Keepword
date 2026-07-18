@@ -1,7 +1,7 @@
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 
-import { chatMemberships, chats, commitments, users } from '../../src/db/schema.js';
+import { chatMemberships, chats, commitments, notificationDeliveries, users } from '../../src/db/schema.js';
 import { createDigestJob } from '../../src/jobs/digests.js';
 import { createConnectChat } from '../../src/services/connect-chat.js';
 import { createFakeTelegram } from '../helpers/fake-telegram.js';
@@ -192,5 +192,34 @@ describe('daily digests', () => {
     expect(adminDigest).toContain('Без срока');
     expect(adminDigest).not.toContain('Connected');
     expect(adminDigest).not.toContain('Not connected');
+  });
+
+  test('does not retry a digest when Telegram rejects after sending begins', async () => {
+    const fixture = await createFixture();
+    await database.db.update(chatMemberships).set({ notificationsEnabled: false }).where(eq(chatMemberships.userId, fixture.userB.id));
+    await addCommitment({
+      assigneeUserId: fixture.userA.id,
+      chatId: fixture.chatId,
+      dueAt: new Date('2026-07-19T04:00:00.000Z'),
+      title: 'Проверить договор',
+      workspaceId: fixture.workspaceId,
+    });
+    let telegramAttempts = 0;
+    const runDigestJob = createDigestJob({
+      database: database.db,
+      messenger: {
+        sendPrivateMessage: () => {
+          telegramAttempts += 1;
+          return Promise.reject(new Error('Telegram may have accepted the digest'));
+        },
+      },
+    });
+
+    await runDigestJob(new Date('2026-07-18T13:00:00.000Z'));
+    await runDigestJob(new Date('2026-07-18T13:00:00.000Z'));
+
+    expect(telegramAttempts).toBe(1);
+    expect((await database.db.select({ status: notificationDeliveries.status }).from(notificationDeliveries).where(eq(notificationDeliveries.chatId, fixture.chatId)))[0])
+      .toEqual({ status: 'processing' });
   });
 });
