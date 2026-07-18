@@ -9,10 +9,12 @@ import { createLogger, safeErrorCode } from './observability/logger.js';
 import type { Logger } from './observability/logger.js';
 import type { RepositoryDatabase } from './repositories/database.js';
 import type { ReminderMessenger } from './services/send-reminder.js';
+import type { CurrentChatAdminChecker } from './services/authorize-action.js';
 
 export type RunJobs = () => Promise<void>;
 
 export type WorkerMessenger = Readonly<{
+  isCurrentChatAdmin: CurrentChatAdminChecker;
   sendPrivateMessage: (input: Readonly<{
     replyMarkup?: Parameters<ReminderMessenger['sendPrivateMessage']>[0]['replyMarkup'];
     telegramUserId: number;
@@ -34,6 +36,7 @@ export function createJobRunner<TQueryResult extends PgQueryResultHKT>(input: Re
   });
   const runDigestJob = createDigestJob({
     database: input.database,
+    isCurrentChatAdmin: input.messenger.isCurrentChatAdmin,
     logger: input.logger,
     messenger: input.messenger,
   });
@@ -54,6 +57,10 @@ export function createTelegramJobRunner<TQueryResult extends PgQueryResultHKT>(i
     database: input.database,
     logger: input.logger,
     messenger: {
+      async isCurrentChatAdmin(input) {
+        const member = await bot.api.getChatMember(Number(input.telegramChatId), input.telegramUserId);
+        return member.status === 'administrator' || member.status === 'creator';
+      },
       async sendPrivateMessage(input) {
         if (input.replyMarkup) {
           await bot.api.sendMessage(input.telegramUserId, input.text, { reply_markup: input.replyMarkup });

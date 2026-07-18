@@ -224,7 +224,11 @@ test('supports the complete approved MVP without leaking private task state', as
     })).resolves.toMatchObject({ status: 'completed' });
 
     await database.db.update(chats).set({ dailyDigestTime: '18:00:00' }).where(eq(chats.id, chat.id));
-    const runDigestJob = createDigestJob({ database: database.db, messenger: fakeTelegram });
+    const runDigestJob = createDigestJob({
+      database: database.db,
+      isCurrentChatAdmin: () => Promise.resolve(true),
+      messenger: fakeTelegram,
+    });
     await expect(runDigestJob(new Date('2026-07-18T18:00:00.000Z'))).resolves.toMatchObject({ delivered: 2 });
     expect(fakeTelegram.privateMessagesFor(adminTelegramUserId)).toEqual(expect.arrayContaining([
       expect.stringContaining('📋 Личная вечерняя сводка'),

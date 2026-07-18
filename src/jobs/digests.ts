@@ -6,6 +6,7 @@ import type { JobResult } from './reminders.js';
 import type { Logger } from '../observability/logger.js';
 import type { RepositoryDatabase } from '../repositories/database.js';
 import { createCommitmentsRepository } from '../repositories/commitments.js';
+import { createCalibrationRepository } from '../repositories/calibration.js';
 import {
   buildAdminDigest,
   buildUserDigest,
@@ -15,6 +16,7 @@ import {
   type SendDigest,
 } from '../services/send-digest.js';
 import { renderAdminDigest, renderUserDigest } from '../telegram/messages.js';
+import type { CurrentChatAdminChecker } from '../services/authorize-action.js';
 
 export type RunDigestJob = (now: Date) => Promise<JobResult>;
 
@@ -57,16 +59,19 @@ function deliveryResult(result: Awaited<ReturnType<SendDigest>>): keyof JobResul
 
 export function createDigestJob<TQueryResult extends PgQueryResultHKT>(input: Readonly<{
   database: RepositoryDatabase<TQueryResult>;
+  isCurrentChatAdmin: CurrentChatAdminChecker;
   logger?: Logger;
   messenger: DigestMessenger;
 }>): RunDigestJob {
   const sendDigest = createSendDigest(input);
+  const calibrationRepository = createCalibrationRepository(input.database);
   const commitmentsRepository = createCommitmentsRepository(input.database);
   return async (now) => {
     const activeChats = await input.database
       .select({
         dailyDigestTime: chats.dailyDigestTime,
         id: chats.id,
+        telegramChatId: chats.telegramChatId,
         timezone: chats.timezone,
         workspaceId: chats.workspaceId,
       })
@@ -88,7 +93,7 @@ export function createDigestJob<TQueryResult extends PgQueryResultHKT>(input: Re
       if (local.time < chat.dailyDigestTime) {
         continue;
       }
-      const [chatCommitments, recipients, reviewTitles] = await Promise.all([
+      const [chatCommitments, recipients, reviewTitles, calibration] = await Promise.all([
         input.database
           .select({
             assigneeUserId: commitments.assigneeUserId,
@@ -112,8 +117,14 @@ export function createDigestJob<TQueryResult extends PgQueryResultHKT>(input: Re
           .innerJoin(users, eq(chatMemberships.userId, users.id))
           .where(and(eq(chatMemberships.chatId, chat.id), eq(chatMemberships.workspaceId, chat.workspaceId))),
         commitmentsRepository.findPendingSuggestionTitles({ chatId: chat.id, workspaceId: chat.workspaceId }),
+        calibrationRepository.findChatCalibration({
+          chatId: chat.id,
+          now,
+          workspaceId: chat.workspaceId,
+        }),
       ]);
       const digestInput = {
+        ...(calibration ? { calibration } : {}),
         chatId: chat.id,
         commitments: chatCommitments as readonly DigestCommitment[],
         date: local.date,
@@ -137,6 +148,19 @@ export function createDigestJob<TQueryResult extends PgQueryResultHKT>(input: Re
         });
         result[deliveryResult(personalResult)] += 1;
         if (recipient.role !== 'admin') {
+          continue;
+        }
+        const isCurrentAdmin = await input.isCurrentChatAdmin({
+          telegramChatId: String(chat.telegramChatId),
+          telegramUserId: recipient.telegramUserId,
+        }).catch(() => false);
+        if (!isCurrentAdmin) {
+          input.logger?.info('authorization_denied', {
+            errorCode: 'CURRENT_ADMIN_UNVERIFIED',
+            result: 'failure',
+            telegramUserId: String(recipient.telegramUserId),
+            workspaceId: chat.workspaceId,
+          });
           continue;
         }
         const admin = buildAdminDigest(digestInput);

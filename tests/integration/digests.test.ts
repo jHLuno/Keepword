@@ -1,7 +1,16 @@
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 
-import { chatMemberships, chats, commitments, notificationDeliveries, users } from '../../src/db/schema.js';
+import {
+  chatMemberships,
+  chats,
+  commitments,
+  commitmentSuggestions,
+  notificationDeliveries,
+  sourceMessages,
+  suggestionEvents,
+  users,
+} from '../../src/db/schema.js';
 import { createDigestJob } from '../../src/jobs/digests.js';
 import { createConnectChat } from '../../src/services/connect-chat.js';
 import { createFakeTelegram } from '../helpers/fake-telegram.js';
@@ -9,6 +18,7 @@ import { createPgliteTestDatabase, type PgliteTestDatabase } from '../helpers/pg
 
 let database: PgliteTestDatabase;
 let nextTelegramChatId = 96_000;
+let nextTelegramMessageId = 1;
 
 type ConnectedUser = Readonly<{
   id: string;
@@ -106,6 +116,104 @@ async function addCommitment(input: Readonly<{
   return commitment.id;
 }
 
+async function enableAdminDigest(fixture: DigestFixture): Promise<void> {
+  await database.db.update(users).set({ privateChatStartedAt: new Date('2026-07-18T09:00:00.000Z') })
+    .where(eq(users.id, fixture.owner.id));
+  await database.db.update(chatMemberships).set({
+    notificationsConnectedAt: new Date('2026-07-18T09:00:00.000Z'),
+    notificationsEnabled: true,
+  }).where(and(
+    eq(chatMemberships.chatId, fixture.chatId),
+    eq(chatMemberships.workspaceId, fixture.workspaceId),
+    eq(chatMemberships.userId, fixture.owner.id),
+  ));
+}
+
+async function addResolvedSuggestion(input: Readonly<{
+  chatId: string;
+  edited?: boolean;
+  eventAt: Date;
+  eventType: 'confirmed' | 'rejected';
+  title: string;
+  userId: string;
+  workspaceId: string;
+}>): Promise<void> {
+  const messageId = nextTelegramMessageId++;
+  const source = (await database.db.insert(sourceMessages).values({
+    authorUserId: input.userId,
+    chatId: input.chatId,
+    messageText: 'masked test source',
+    sentAt: new Date(input.eventAt.getTime() - 2_000),
+    telegramMessageId: messageId,
+    usedAsSource: true,
+    workspaceId: input.workspaceId,
+  }).returning({ id: sourceMessages.id }))[0];
+  if (!source) throw new Error('Expected source message');
+  const suggestion = (await database.db.insert(commitmentSuggestions).values({
+    assigneeUserId: input.userId,
+    chatId: input.chatId,
+    confidence: 'high',
+    needsAssigneeClarification: false,
+    needsDueDateClarification: false,
+    normalizedTitle: `${input.title}-${messageId}`.toLowerCase(),
+    sourceMessageId: source.id,
+    status: input.eventType === 'confirmed' ? 'confirmed' : 'rejected',
+    title: input.title,
+    workspaceId: input.workspaceId,
+  }).returning({ id: commitmentSuggestions.id }))[0];
+  if (!suggestion) throw new Error('Expected suggestion');
+  await database.db.insert(suggestionEvents).values({
+    actorUserId: input.userId,
+    chatId: input.chatId,
+    createdAt: new Date(input.eventAt.getTime() - 1_000),
+    eventType: 'suggested',
+    snapshot: { original: { title: input.title } },
+    suggestionId: suggestion.id,
+    workspaceId: input.workspaceId,
+  });
+  if (input.edited) {
+    await database.db.insert(suggestionEvents).values({
+      actorUserId: input.userId,
+      chatId: input.chatId,
+      createdAt: new Date(input.eventAt.getTime() - 500),
+      eventType: 'edited',
+      snapshot: { after: { title: input.title }, before: { title: input.title } },
+      suggestionId: suggestion.id,
+      workspaceId: input.workspaceId,
+    });
+  }
+  await database.db.insert(suggestionEvents).values({
+    actorUserId: input.userId,
+    chatId: input.chatId,
+    createdAt: input.eventAt,
+    eventType: input.eventType,
+    snapshot: { final: { title: input.title } },
+    suggestionId: suggestion.id,
+    workspaceId: input.workspaceId,
+  });
+}
+
+async function addSameWorkspaceChat(fixture: DigestFixture): Promise<Readonly<{ chatId: string; workspaceId: string }>> {
+  nextTelegramChatId += 1;
+  const chat = (await database.db.insert(chats).values({
+    dailyDigestTime: '18:00:00',
+    telegramChatId: nextTelegramChatId,
+    timezone: 'Asia/Almaty',
+    title: 'Second digest test',
+    workspaceId: fixture.workspaceId,
+  }).returning({ id: chats.id, workspaceId: chats.workspaceId }))[0];
+  if (!chat) throw new Error('Expected second chat');
+  await database.db.insert(chatMemberships).values({
+    chatId: chat.id,
+    notificationsConnectedAt: new Date('2026-07-18T09:00:00.000Z'),
+    notificationsEnabled: true,
+    role: 'admin',
+    userId: fixture.owner.id,
+    workspaceId: fixture.workspaceId,
+  });
+  return { chatId: chat.id, workspaceId: chat.workspaceId };
+}
+
 beforeAll(async () => {
   database = await createPgliteTestDatabase();
 });
@@ -131,7 +239,7 @@ describe('daily digests', () => {
       title: 'Чужая задача',
       workspaceId: fixture.workspaceId,
     });
-    const runDigestJob = createDigestJob({ database: database.db, messenger: fixture.telegram });
+    const runDigestJob = createDigestJob({ database: database.db, isCurrentChatAdmin: () => Promise.resolve(true), messenger: fixture.telegram });
 
     await runDigestJob(new Date('2026-07-18T13:00:00.000Z'));
 
@@ -151,7 +259,7 @@ describe('daily digests', () => {
       title: 'Проверить договор',
       workspaceId: fixture.workspaceId,
     });
-    const runDigestJob = createDigestJob({ database: database.db, messenger: fixture.telegram });
+    const runDigestJob = createDigestJob({ database: database.db, isCurrentChatAdmin: () => Promise.resolve(true), messenger: fixture.telegram });
 
     await runDigestJob(new Date('2026-07-18T12:00:00.000Z'));
     const firstRun = await runDigestJob(new Date('2026-07-18T13:00:00.000Z'));
@@ -181,7 +289,7 @@ describe('daily digests', () => {
       title: 'Без срока',
       workspaceId: fixture.workspaceId,
     });
-    const runDigestJob = createDigestJob({ database: database.db, messenger: fixture.telegram });
+    const runDigestJob = createDigestJob({ database: database.db, isCurrentChatAdmin: () => Promise.resolve(true), messenger: fixture.telegram });
 
     await runDigestJob(new Date('2026-07-18T13:00:00.000Z'));
 
@@ -192,6 +300,144 @@ describe('daily digests', () => {
     expect(adminDigest).toContain('Без срока');
     expect(adminDigest).not.toContain('Connected');
     expect(adminDigest).not.toContain('Not connected');
+  });
+
+  test('renders chat-scoped calibration only in the matching admin digest', async () => {
+    const fixture = await createFixture();
+    await enableAdminDigest(fixture);
+    const otherChat = await addSameWorkspaceChat(fixture);
+    const now = new Date('2026-07-18T13:00:00.000Z');
+    await Promise.all([
+      ...Array.from({ length: 15 }, (_, index) => addResolvedSuggestion({
+        chatId: fixture.chatId,
+        eventAt: now,
+        eventType: 'confirmed',
+        title: `Без правок ${index + 1}`,
+        userId: fixture.owner.id,
+        workspaceId: fixture.workspaceId,
+      })),
+      ...Array.from({ length: 10 }, (_, index) => addResolvedSuggestion({
+        chatId: fixture.chatId,
+        edited: true,
+        eventAt: now,
+        eventType: 'confirmed',
+        title: `С правкой ${index + 1}`,
+        userId: fixture.owner.id,
+        workspaceId: fixture.workspaceId,
+      })),
+      ...Array.from({ length: 5 }, (_, index) => addResolvedSuggestion({
+        chatId: fixture.chatId,
+        eventAt: now,
+        eventType: 'rejected',
+        title: `Отклонено ${index + 1}`,
+        userId: fixture.owner.id,
+        workspaceId: fixture.workspaceId,
+      })),
+      ...Array.from({ length: 30 }, (_, index) => addResolvedSuggestion({
+        chatId: otherChat.chatId,
+        eventAt: now,
+        eventType: 'rejected',
+        title: `Другой чат ${index + 1}`,
+        userId: fixture.owner.id,
+        workspaceId: fixture.workspaceId,
+      })),
+    ]);
+    const runDigestJob = createDigestJob({ database: database.db, isCurrentChatAdmin: () => Promise.resolve(true), messenger: fixture.telegram });
+
+    await runDigestJob(now);
+
+    const adminDigests = fixture.telegram.privateMessagesFor(fixture.owner.telegramUserId)
+      .filter((message) => message.includes('📊 Риски команды'));
+    expect(adminDigests).toHaveLength(2);
+    expect(adminDigests).toEqual(expect.arrayContaining([
+      expect.stringContaining('Без правок: 15 (50%)'),
+      expect.stringContaining('После правок: 10 (33%)'),
+      expect.stringContaining('Отклонено: 5 (17%)'),
+      expect.stringContaining('Отклонено: 30 (100%)'),
+    ]));
+    expect(adminDigests.find((message) => message.includes('Без правок: 15 (50%)'))).not.toContain('Отклонено: 30 (100%)');
+  });
+
+  test('hides calibration before 30 in-window decisions and ignores older decisions', async () => {
+    const fixture = await createFixture();
+    await enableAdminDigest(fixture);
+    const now = new Date('2026-07-18T13:00:00.000Z');
+    await Promise.all([
+      ...Array.from({ length: 29 }, (_, index) => addResolvedSuggestion({
+        chatId: fixture.chatId,
+        eventAt: now,
+        eventType: 'confirmed',
+        title: `Recent ${index + 1}`,
+        userId: fixture.owner.id,
+        workspaceId: fixture.workspaceId,
+      })),
+      addResolvedSuggestion({
+        chatId: fixture.chatId,
+        eventAt: new Date('2026-04-18T12:59:59.000Z'),
+        eventType: 'rejected',
+        title: 'Old decision',
+        userId: fixture.owner.id,
+        workspaceId: fixture.workspaceId,
+      }),
+    ]);
+    const runDigestJob = createDigestJob({ database: database.db, isCurrentChatAdmin: () => Promise.resolve(true), messenger: fixture.telegram });
+
+    await runDigestJob(now);
+
+    const firstAdminDigest = fixture.telegram.privateMessagesFor(fixture.owner.telegramUserId)
+      .find((message) => message.includes('📊 Риски команды'));
+    expect(firstAdminDigest).not.toContain('Точность Keepword');
+  });
+
+  test('never discloses calibration to a non-admin personal digest or a group', async () => {
+    const fixture = await createFixture();
+    const now = new Date('2026-07-18T13:00:00.000Z');
+    await Promise.all(Array.from({ length: 30 }, (_, index) => addResolvedSuggestion({
+      chatId: fixture.chatId,
+      eventAt: now,
+      eventType: 'confirmed',
+      title: `Admin-only ${index + 1}`,
+      userId: fixture.owner.id,
+      workspaceId: fixture.workspaceId,
+    })));
+    const runDigestJob = createDigestJob({ database: database.db, isCurrentChatAdmin: () => Promise.resolve(true), messenger: fixture.telegram });
+
+    await runDigestJob(now);
+
+    const memberMessages = fixture.telegram.privateMessagesFor(fixture.userA.telegramUserId);
+    expect(memberMessages).toHaveLength(1);
+    expect(memberMessages[0]).not.toContain('Точность Keepword');
+    expect(fixture.telegram.groupMessages).not.toContain('Точность Keepword');
+  });
+
+  test('does not send an admin calibration digest when current Telegram admin access is gone', async () => {
+    const fixture = await createFixture();
+    await enableAdminDigest(fixture);
+    const now = new Date('2026-07-18T13:00:00.000Z');
+    await Promise.all(Array.from({ length: 30 }, (_, index) => addResolvedSuggestion({
+      chatId: fixture.chatId,
+      eventAt: now,
+      eventType: 'confirmed',
+      title: `Former admin ${index + 1}`,
+      userId: fixture.owner.id,
+      workspaceId: fixture.workspaceId,
+    })));
+    const runDigestJob = createDigestJob({
+      database: database.db,
+      isCurrentChatAdmin: () => Promise.resolve(false),
+      messenger: fixture.telegram,
+    });
+
+    await runDigestJob(now);
+
+    const formerAdminMessages = fixture.telegram.privateMessagesFor(fixture.owner.telegramUserId);
+    expect(formerAdminMessages).toHaveLength(1);
+    expect(formerAdminMessages[0]).not.toContain('Точность Keepword');
+    await database.db.update(chatMemberships).set({ notificationsEnabled: false }).where(and(
+      eq(chatMemberships.chatId, fixture.chatId),
+      eq(chatMemberships.workspaceId, fixture.workspaceId),
+      eq(chatMemberships.userId, fixture.owner.id),
+    ));
   });
 
   test('does not retry a digest when Telegram rejects after sending begins', async () => {
@@ -207,6 +453,7 @@ describe('daily digests', () => {
     let telegramAttempts = 0;
     const runDigestJob = createDigestJob({
       database: database.db,
+      isCurrentChatAdmin: () => Promise.resolve(true),
       messenger: {
         sendPrivateMessage: () => {
           telegramAttempts += 1;

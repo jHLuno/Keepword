@@ -154,7 +154,11 @@ describe('chat modes', () => {
     expect(await countSuggestions(connected.chatId)).toBe(1);
 
     const telegram = createFakeTelegram();
-    await createDigestJob({ database: database.db, messenger: telegram })(new Date('2026-07-18T18:00:00.000Z'));
+    await createDigestJob({
+      database: database.db,
+      isCurrentChatAdmin: () => Promise.resolve(true),
+      messenger: telegram,
+    })(new Date('2026-07-18T18:00:00.000Z'));
     expect(telegram.privateMessagesFor(120001).some(
       (text) => text.includes('На проверку') && text.includes('Отправить КП'),
     )).toBe(true);

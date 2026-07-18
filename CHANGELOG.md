@@ -1,4 +1,22 @@
-[Earlier entries](docs/archive/CHANGELOG-pre-S04.md) · [2026-07-19 archive](docs/archive/CHANGELOG-2026-07-19-pre-filter.md) · [Trust Memory archive](docs/archive/CHANGELOG-2026-07-19-pre-trust-memory.md)
+[Earlier entries](docs/archive/CHANGELOG-pre-S04.md) · [2026-07-19 archive](docs/archive/CHANGELOG-2026-07-19-pre-filter.md) · [Trust Memory archive](docs/archive/CHANGELOG-2026-07-19-pre-trust-memory.md) · [Pre-calibration archive](docs/archive/CHANGELOG-2026-07-19-pre-calibration.md)
+
+## 2026-07-19 — Private chat-scoped calibration digest
+
+### Added
+- Added a 90-day calibration aggregate derived only from immutable `suggestion_events` for the exact active workspace/chat pair.
+- After 30 resolved decisions, the private digest for a current admin shows confirmed-without-edits, confirmed-after-edits, and rejected counts with percentages.
+
+### Changed
+- The worker now verifies current Telegram administrator status before sending any admin digest, preventing a former admin with a stale database role from receiving group data.
+- Personal digests and all group messages remain free of calibration data.
+
+### Verified
+- Focused digest, mode, and MVP suites: 15 tests passed.
+- `pnpm typecheck`, `pnpm test` (28 files, 144 tests), and `pnpm build` passed.
+- Targeted ESLint for changed source/tests and `git diff --check` passed.
+
+### Notes
+- Repository-wide `pnpm lint` remains blocked by the pre-existing untracked `landing/dist/assets/index-Cs9s6c9w.js` output, which was not changed.
 
 ## 2026-07-19 — Immutable suggestion memory
 
@@ -18,20 +36,3 @@
 ### Verified
 - `pnpm vitest run tests/integration/suggestion-events.test.ts tests/integration/privacy.test.ts`, `pnpm typecheck`, targeted ESLint, `pnpm test` (28 files, 140 tests), and `pnpm build` passed locally.
 - Repository-wide `pnpm lint` remains blocked by the pre-existing untracked `landing/dist` output, which is intentionally not part of this change.
-
-## 2026-07-19 — Trust Memory product definition
-
-### Changed
-- Updated `PROJECT.md` with the approved next production release: actionable cross-chat `/check`, immutable agreement/decision memory, team-local calibration, and private group-scoped reliability.
-- Added the implementation plan and explicit privacy boundaries: no cross-chat or cross-team admin visibility.
-
-### Verified
-- Documentation self-review and `git diff --check` passed.
-
-## 2026-07-19 — Railway lockfile configuration fix
-
-### Fixed
-- Copied `pnpm-workspace.yaml` into both Docker build stages before frozen dependency installation, so Railway receives the same pnpm override configuration that produced `pnpm-lock.yaml`.
-
-### Verified
-- `pnpm install --frozen-lockfile --prod` — passed locally with the production dependency graph.

@@ -233,6 +233,15 @@ export function renderAdminDigest(summary: TeamRiskSummary): string {
   const review = summary.reviewTitles.length === 0
     ? '— нет кандидатов'
     : summary.reviewTitles.map((title) => `— ${title}`).join('\n');
+  const calibration = summary.calibration
+    ? [
+      '',
+      'Точность Keepword · последние 90 дней',
+      `Без правок: ${summary.calibration.acceptedAsProposed} (${Math.round(summary.calibration.acceptedAsProposed / summary.calibration.resolved * 100)}%)`,
+      `После правок: ${summary.calibration.editedBeforeConfirmation} (${Math.round(summary.calibration.editedBeforeConfirmation / summary.calibration.resolved * 100)}%)`,
+      `Отклонено: ${summary.calibration.rejected} (${Math.round(summary.calibration.rejected / summary.calibration.resolved * 100)}%)`,
+    ]
+    : [];
   return [
     '📊 Риски команды',
     '',
@@ -246,5 +255,6 @@ export function renderAdminDigest(summary: TeamRiskSummary): string {
     '',
     'На проверку:',
     review,
+    ...calibration,
   ].join('\n');
 }
