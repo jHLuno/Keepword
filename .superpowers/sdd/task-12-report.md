@@ -40,3 +40,16 @@
 - `pnpm typecheck` — passed
 - `pnpm lint` — passed
 - `pnpm test` — passed (24 files, 110 tests)
+
+## Final race-condition follow-up
+
+- Candidate analysis now constructs its short-lived extraction context before persistence. If deletion completes while extraction is in flight, no source text is written afterward.
+- Both `persistCandidateSourceMessage` and pending-suggestion creation lock and revalidate the scoped chat with `FOR UPDATE` and `is_active = true` inside their respective write transactions. A stale pre-deletion read therefore cannot write after deletion commits.
+- Added a concurrent regression: analysis reads an active chat and pauses in extraction; chat deletion then commits; releasing extraction causes the delayed persistence path to return `skipped` with no source or suggestion rows.
+
+### Final race verification
+
+- `pnpm vitest run tests/integration/privacy.test.ts tests/integration/suggestions.test.ts` — passed (10 tests)
+- `pnpm typecheck` — passed
+- `pnpm lint` — passed
+- `pnpm test` — passed (24 files, 111 tests)

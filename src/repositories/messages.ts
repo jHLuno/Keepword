@@ -2,6 +2,7 @@ import { and, desc, eq } from 'drizzle-orm';
 import type { PgQueryResultHKT } from 'drizzle-orm/pg-core';
 
 import { chatMemberships, chats, sourceMessages, users } from '../db/schema.js';
+import { ChatInactiveWriteError } from './chats.js';
 
 import type { RepositoryDatabase } from './database.js';
 
@@ -139,6 +140,21 @@ export function createMessagesRepository<TQueryResult extends PgQueryResultHKT>(
 
     async persistCandidateSourceMessage(input) {
       return database.transaction(async (transaction) => {
+        const activeChat = await transaction
+          .select({ id: chats.id })
+          .from(chats)
+          .where(
+            and(
+              eq(chats.id, input.chatId),
+              eq(chats.workspaceId, input.workspaceId),
+              eq(chats.isActive, true),
+            ),
+          )
+          .for('update')
+          .limit(1);
+        if (!activeChat[0]) {
+          throw new ChatInactiveWriteError();
+        }
         const insertedUsers = await transaction
           .insert(users)
           .values({

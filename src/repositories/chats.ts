@@ -7,6 +7,15 @@ import type { RepositoryDatabase } from './database.js';
 
 export type ChatMode = 'suggest' | 'manual' | 'silent_digest';
 
+export class ChatInactiveWriteError extends Error {
+  readonly code = 'CHAT_INACTIVE';
+
+  constructor() {
+    super('Chat is no longer active');
+    this.code = 'CHAT_INACTIVE';
+  }
+}
+
 export type ScopedChatInput = Readonly<{
   workspaceId: string;
   chatId: string;

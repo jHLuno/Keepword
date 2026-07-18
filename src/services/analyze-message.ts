@@ -4,6 +4,7 @@ import { isPotentialCommitment } from '../ai/prefilter.js';
 import type { CommitmentExtractor } from '../ai/extractor.js';
 import type { CommitmentCandidate } from '../domain/extraction.js';
 import type { Logger } from '../observability/logger.js';
+import { ChatInactiveWriteError } from '../repositories/chats.js';
 import { createMessagesRepository } from '../repositories/messages.js';
 import type { RepositoryDatabase } from '../repositories/database.js';
 import { createUsersRepository } from '../repositories/users.js';
@@ -107,35 +108,46 @@ export function createAnalyzeGroupMessage<TQueryResult extends PgQueryResultHKT>
       return 'skipped';
     }
 
-    const sourceMessage = await messages.persistCandidateSourceMessage({
-      author: input.author,
-      chatId: chat.id,
-      sentAt: input.sentAt,
-      telegramMessageId,
-      text: input.text,
-      workspaceId: chat.workspaceId,
-    });
-    logger?.info('message_candidate_detected', {
-      messageId: sourceMessage.id,
-      telegramChatId: input.telegramChatId,
-      telegramUserId: String(input.author.telegramUserId),
-      workspaceId: chat.workspaceId,
-    });
-
     const recentMessages = await messages.findRecentScopedMessages({
       chatId: chat.id,
       limit: 5,
       workspaceId: chat.workspaceId,
     });
-    const extractionMessage = recentMessages.find((message) => message.id === sourceMessage.id);
-    if (!extractionMessage) {
-      throw new Error('Persisted source message was not available for extraction');
-    }
+    const extractionMessage = {
+      authorTelegramUserId: String(input.author.telegramUserId),
+      chatId: chat.id,
+      id: `telegram:${chat.id}:${telegramMessageId}`,
+      sentAt: input.sentAt.toISOString(),
+      text: input.text,
+    };
 
     const candidate = await extractor.extractCandidate({
       chatId: chat.id,
       message: extractionMessage,
-      recentMessages,
+      recentMessages: [...recentMessages.slice(-4), extractionMessage],
+    });
+
+    let sourceMessage;
+    try {
+      sourceMessage = await messages.persistCandidateSourceMessage({
+        author: input.author,
+        chatId: chat.id,
+        sentAt: input.sentAt,
+        telegramMessageId,
+        text: input.text,
+        workspaceId: chat.workspaceId,
+      });
+    } catch (error: unknown) {
+      if (error instanceof ChatInactiveWriteError) {
+        return 'skipped';
+      }
+      throw error;
+    }
+    logger?.info('message_candidate_detected', {
+      messageId: sourceMessage.id,
+      telegramChatId: input.telegramChatId,
+      telegramUserId: String(input.author.telegramUserId),
+      workspaceId: chat.workspaceId,
     });
 
     if (
@@ -169,19 +181,27 @@ export function createAnalyzeGroupMessage<TQueryResult extends PgQueryResultHKT>
       return 'skipped';
     }
 
-    const createdSuggestion = await createPendingSuggestion({
-      assigneeUserId: assignee.id,
-      chatId: chat.id,
-      confidence: candidate.confidence,
-      description: candidate.description,
-      dueAt: candidate.due_at === null ? null : new Date(candidate.due_at),
-      dueDateText: candidate.due_date_text,
-      needsAssigneeClarification: candidate.needs_assignee_clarification,
-      needsDueDateClarification: candidate.needs_due_date_clarification,
-      sourceMessageId: sourceMessage.id,
-      title: candidate.title,
-      workspaceId: chat.workspaceId,
-    });
+    let createdSuggestion;
+    try {
+      createdSuggestion = await createPendingSuggestion({
+        assigneeUserId: assignee.id,
+        chatId: chat.id,
+        confidence: candidate.confidence,
+        description: candidate.description,
+        dueAt: candidate.due_at === null ? null : new Date(candidate.due_at),
+        dueDateText: candidate.due_date_text,
+        needsAssigneeClarification: candidate.needs_assignee_clarification,
+        needsDueDateClarification: candidate.needs_due_date_clarification,
+        sourceMessageId: sourceMessage.id,
+        title: candidate.title,
+        workspaceId: chat.workspaceId,
+      });
+    } catch (error: unknown) {
+      if (error instanceof ChatInactiveWriteError) {
+        return 'skipped';
+      }
+      throw error;
+    }
     if (createdSuggestion.duplicate) {
       logger?.info('duplicate_commitment_detected', {
         commitmentId: createdSuggestion.id,

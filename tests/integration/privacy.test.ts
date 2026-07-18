@@ -179,4 +179,55 @@ describe('chat data deletion', () => {
     })).resolves.toBe('skipped');
     expect(await countForChat(sourceMessages, connected.chatId)).toBe(0);
   });
+
+  test('an analysis that read an active chat before deletion rejects its delayed suggestion write', async () => {
+    const connected = await createPopulatedChat();
+    const deleteChatData = createDeleteChatData(database.db, () => Promise.resolve(true));
+    let markExtractionStarted: (() => void) | undefined;
+    const extractionStarted = new Promise<void>((resolve) => {
+      markExtractionStarted = resolve;
+    });
+    let releaseExtraction: (() => void) | undefined;
+    const extractionGate = new Promise<void>((resolve) => {
+      releaseExtraction = resolve;
+    });
+    const analyzer = createAnalyzeGroupMessage(database.db, {
+      extractCandidate: async () => {
+        markExtractionStarted?.();
+        await extractionGate;
+        return {
+          assignee_telegram_user_id: '130001',
+          category: 'promise' as const,
+          confidence: 'high' as const,
+          description: null,
+          due_at: null,
+          due_date_text: 'сегодня',
+          is_commitment: true,
+          needs_assignee_clarification: false,
+          needs_due_date_clarification: false,
+          reasoning_short: 'Явное обещание.',
+          source_message_ids: [],
+          title: 'Запись после удаления',
+        };
+      },
+    }, undefined, 'privacy-test-secret');
+    const analysis = analyzer({
+      author: { firstName: 'Admin', telegramUserId: 130001 },
+      sentAt: new Date('2026-07-18T11:00:00.000Z'),
+      telegramChatId: connected.telegramChatId,
+      telegramMessageId: '100',
+      text: 'Сегодня отправлю отчёт',
+    });
+    await extractionStarted;
+    await deleteChatData({
+      chatId: connected.chatId,
+      requestedByTelegramUserId: '130001',
+      workspaceId: connected.workspaceId,
+    });
+    releaseExtraction?.();
+
+    await expect(analysis).resolves.toBe('skipped');
+    expect(await countForChat(sourceMessages, connected.chatId)).toBe(0);
+    expect(await countForChat(commitmentSuggestions, connected.chatId)).toBe(0);
+  });
 });
