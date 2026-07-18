@@ -361,6 +361,14 @@ describe('daily digests', () => {
       addCommitment({
         assigneeUserId: fixture.userA.id,
         chatId: fixture.chatId,
+        dueAt: new Date('2026-07-19T12:00:00.000Z'),
+        status: 'open',
+        title: 'Future deadline in first chat',
+        workspaceId: fixture.workspaceId,
+      }),
+      addCommitment({
+        assigneeUserId: fixture.userA.id,
+        chatId: fixture.chatId,
         completedAt: new Date('2026-06-18T12:59:58.000Z'),
         dueAt: new Date('2026-06-18T12:59:59.000Z'),
         status: 'completed',
@@ -390,6 +398,7 @@ describe('daily digests', () => {
     expect(adminDigests).toHaveLength(1);
     expect(adminDigests[0]).toContain('🤝 Надёжность · последние 30 дней');
     expect(adminDigests[0]).toContain('Aigerim: 1/3 вовремя · 1 с опозданием · 1 риск');
+    expect(adminDigests[0]).not.toContain('Aigerim: 1/4 вовремя');
     expect(adminDigests[0]).not.toContain('4/6 вовремя');
     expect(adminDigests[0]).not.toContain('Other chat 1');
     expect(adminDigests[0]).not.toContain('Cancelled in first chat');
