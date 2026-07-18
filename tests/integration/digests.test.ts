@@ -132,18 +132,22 @@ async function enableAdminDigest(fixture: DigestFixture): Promise<void> {
 async function addResolvedSuggestion(input: Readonly<{
   chatId: string;
   edited?: boolean;
+  editedAt?: Date;
   eventAt: Date;
   eventType: 'confirmed' | 'rejected';
+  suggestedAt?: Date;
   title: string;
   userId: string;
   workspaceId: string;
 }>): Promise<void> {
   const messageId = nextTelegramMessageId++;
+  const suggestedAt = input.suggestedAt ?? new Date(input.eventAt.getTime() - 2_000);
+  const editedAt = input.editedAt ?? new Date(input.eventAt.getTime() - 500);
   const source = (await database.db.insert(sourceMessages).values({
     authorUserId: input.userId,
     chatId: input.chatId,
     messageText: 'masked test source',
-    sentAt: new Date(input.eventAt.getTime() - 2_000),
+    sentAt: new Date(suggestedAt.getTime() - 1_000),
     telegramMessageId: messageId,
     usedAsSource: true,
     workspaceId: input.workspaceId,
@@ -165,7 +169,7 @@ async function addResolvedSuggestion(input: Readonly<{
   await database.db.insert(suggestionEvents).values({
     actorUserId: input.userId,
     chatId: input.chatId,
-    createdAt: new Date(input.eventAt.getTime() - 1_000),
+    createdAt: suggestedAt,
     eventType: 'suggested',
     snapshot: { original: { title: input.title } },
     suggestionId: suggestion.id,
@@ -175,7 +179,7 @@ async function addResolvedSuggestion(input: Readonly<{
     await database.db.insert(suggestionEvents).values({
       actorUserId: input.userId,
       chatId: input.chatId,
-      createdAt: new Date(input.eventAt.getTime() - 500),
+      createdAt: editedAt,
       eventType: 'edited',
       snapshot: { after: { title: input.title }, before: { title: input.title } },
       suggestionId: suggestion.id,
@@ -395,6 +399,43 @@ describe('daily digests', () => {
     const firstAdminDigest = fixture.telegram.privateMessagesFor(fixture.owner.telegramUserId)
       .find((message) => message.includes('📊 Риски команды'));
     expect(firstAdminDigest).not.toContain('Точность Keepword');
+  });
+
+  test('counts an in-window confirmation as edited when its edit predates the calibration window', async () => {
+    const fixture = await createFixture();
+    await enableAdminDigest(fixture);
+    const now = new Date('2026-07-18T13:00:00.000Z');
+    const oldEditAt = new Date('2026-04-19T12:59:59.000Z');
+    await Promise.all([
+      ...Array.from({ length: 29 }, (_, index) => addResolvedSuggestion({
+        chatId: fixture.chatId,
+        eventAt: now,
+        eventType: 'confirmed',
+        title: `Unedited ${index + 1}`,
+        userId: fixture.owner.id,
+        workspaceId: fixture.workspaceId,
+      })),
+      addResolvedSuggestion({
+        chatId: fixture.chatId,
+        edited: true,
+        editedAt: oldEditAt,
+        eventAt: now,
+        eventType: 'confirmed',
+        suggestedAt: new Date(oldEditAt.getTime() - 1_000),
+        title: 'Edited before window',
+        userId: fixture.owner.id,
+        workspaceId: fixture.workspaceId,
+      }),
+    ]);
+    const runDigestJob = createDigestJob({ database: database.db, isCurrentChatAdmin: () => Promise.resolve(true), messenger: fixture.telegram });
+
+    await runDigestJob(now);
+
+    const adminDigest = fixture.telegram.privateMessagesFor(fixture.owner.telegramUserId)
+      .find((message) => message.includes('📊 Риски команды'));
+    expect(adminDigest).toContain('Без правок: 29 (97%)');
+    expect(adminDigest).toContain('После правок: 1 (3%)');
+    expect(adminDigest).not.toContain('Без правок: 30 (100%)');
   });
 
   test('never discloses calibration to a non-admin personal digest or a group', async () => {

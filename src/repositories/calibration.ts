@@ -1,4 +1,4 @@
-import { and, asc, eq, gte, lte } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, lte } from 'drizzle-orm';
 import type { PgQueryResultHKT } from 'drizzle-orm/pg-core';
 
 import { suggestionEvents } from '../db/schema.js';
@@ -23,9 +23,14 @@ export type CalibrationRepository = Readonly<{
   }>) => Promise<CalibrationSummary | null>;
 }>;
 
-type ScopedSuggestionEvent = Readonly<{
+type TerminalSuggestionEvent = Readonly<{
   createdAt: Date;
-  eventType: 'confirmed' | 'edited' | 'rejected' | 'suggested';
+  eventType: 'confirmed' | 'rejected';
+  suggestionId: string;
+}>;
+
+type EditedSuggestionEvent = Readonly<{
+  createdAt: Date;
   suggestionId: string;
 }>;
 
@@ -35,7 +40,7 @@ export function createCalibrationRepository<TQueryResult extends PgQueryResultHK
   return {
     async findChatCalibration(input) {
       const windowStart = new Date(input.now.getTime() - calibrationWindowMs);
-      const events = await database
+      const terminalEvents = await database
         .select({
           createdAt: suggestionEvents.createdAt,
           eventType: suggestionEvents.eventType,
@@ -45,35 +50,53 @@ export function createCalibrationRepository<TQueryResult extends PgQueryResultHK
         .where(and(
           eq(suggestionEvents.workspaceId, input.workspaceId),
           eq(suggestionEvents.chatId, input.chatId),
+          inArray(suggestionEvents.eventType, ['confirmed', 'rejected']),
           gte(suggestionEvents.createdAt, windowStart),
           lte(suggestionEvents.createdAt, input.now),
         ))
         .orderBy(asc(suggestionEvents.createdAt));
 
-      const eventsBySuggestion = new Map<string, ScopedSuggestionEvent[]>();
-      for (const event of events as readonly ScopedSuggestionEvent[]) {
-        const grouped = eventsBySuggestion.get(event.suggestionId) ?? [];
+      const terminalEventsBySuggestion = new Map<string, TerminalSuggestionEvent[]>();
+      for (const event of terminalEvents as readonly TerminalSuggestionEvent[]) {
+        const grouped = terminalEventsBySuggestion.get(event.suggestionId) ?? [];
         grouped.push(event);
-        eventsBySuggestion.set(event.suggestionId, grouped);
+        terminalEventsBySuggestion.set(event.suggestionId, grouped);
+      }
+
+      const suggestionIds = [...terminalEventsBySuggestion.keys()];
+      const editedEvents = suggestionIds.length === 0
+        ? []
+        : await database
+          .select({
+            createdAt: suggestionEvents.createdAt,
+            suggestionId: suggestionEvents.suggestionId,
+          })
+          .from(suggestionEvents)
+          .where(and(
+            eq(suggestionEvents.workspaceId, input.workspaceId),
+            eq(suggestionEvents.chatId, input.chatId),
+            eq(suggestionEvents.eventType, 'edited'),
+            inArray(suggestionEvents.suggestionId, suggestionIds),
+            lte(suggestionEvents.createdAt, input.now),
+          ));
+      const editedEventsBySuggestion = new Map<string, EditedSuggestionEvent[]>();
+      for (const event of editedEvents as readonly EditedSuggestionEvent[]) {
+        const grouped = editedEventsBySuggestion.get(event.suggestionId) ?? [];
+        grouped.push(event);
+        editedEventsBySuggestion.set(event.suggestionId, grouped);
       }
 
       const summary = { acceptedAsProposed: 0, editedBeforeConfirmation: 0, rejected: 0, resolved: 0 };
-      for (const suggestionEventsForSuggestion of eventsBySuggestion.values()) {
-        const terminalEvent = suggestionEventsForSuggestion.findLast((event) =>
-          (event.eventType === 'confirmed' || event.eventType === 'rejected')
-            && event.createdAt >= windowStart
-            && event.createdAt <= input.now,
-        );
-        if (!terminalEvent) {
-          continue;
-        }
+      for (const terminalEventsForSuggestion of terminalEventsBySuggestion.values()) {
+        const terminalEvent = terminalEventsForSuggestion.at(-1);
+        if (!terminalEvent) continue;
         summary.resolved += 1;
         if (terminalEvent.eventType === 'rejected') {
           summary.rejected += 1;
           continue;
         }
-        const wasEdited = suggestionEventsForSuggestion.some((event) =>
-          event.eventType === 'edited' && event.createdAt <= terminalEvent.createdAt,
+        const wasEdited = (editedEventsBySuggestion.get(terminalEvent.suggestionId) ?? []).some((event) =>
+          event.createdAt <= terminalEvent.createdAt,
         );
         if (wasEdited) {
           summary.editedBeforeConfirmation += 1;
