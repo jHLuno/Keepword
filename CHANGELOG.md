@@ -11,6 +11,14 @@
 ### Notes
 - Existing Zod validation and message-source provenance checks remain server-side.
 
+## 2026-07-19 — Railway migration runtime
+
+### Fixed
+- Included Drizzle migration tooling, configuration, schema, and migration SQL in the production image.
+
+### Verified
+- `pnpm lint && pnpm typecheck && pnpm test && pnpm build`
+
 ## 2026-07-18 — MVP release readiness
 
 ### Added

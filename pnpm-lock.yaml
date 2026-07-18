@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      drizzle-kit:
+        specifier: ^0.31.4
+        version: 0.31.10
       drizzle-orm:
         specifier: ^0.44.5
         version: 0.44.7(@electric-sql/pglite@0.5.4)(pg@8.22.0)(postgres@3.4.9)
@@ -36,9 +39,6 @@ importers:
       '@types/node':
         specifier: ^22.17.2
         version: 22.20.1
-      drizzle-kit:
-        specifier: ^0.31.4
-        version: 0.31.10
       eslint:
         specifier: ^9.37.0
         version: 9.39.5(jiti@2.7.0)

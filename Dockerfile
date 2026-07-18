@@ -20,6 +20,9 @@ RUN corepack enable
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile --prod
 COPY --from=build /app/dist ./dist
+COPY drizzle.config.ts ./
+COPY src/db/schema.ts ./src/db/schema.ts
+COPY src/db/migrations ./src/db/migrations
 
 USER node
 

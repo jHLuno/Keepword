@@ -12,6 +12,14 @@
 ### Next recommended step
 - Set `OPENROUTER_API_KEY` in both Railway services, redeploy, then run the staging extraction smoke test.
 
+## 2026-07-19 — Handoff
+
+### Done
+- Made `pnpm db:migrate` available in the Railway production image.
+
+### Next recommended step
+- Redeploy the web service, run its pre-deploy migration command, then confirm `/health`.
+
 ## 2026-07-18 — Handoff
 
 ### Done
