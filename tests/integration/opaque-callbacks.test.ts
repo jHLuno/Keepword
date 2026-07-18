@@ -62,16 +62,26 @@ describe('opaque callback tokens', () => {
       suggestionId: suggestion.id,
     });
     const confirmNonce = callbacks.confirm;
-    if (!confirmNonce) {
-      throw new Error('Expected confirm callback nonce');
+    const editNonce = callbacks.edit;
+    if (!confirmNonce || !editNonce) {
+      throw new Error('Expected callback nonces');
     }
 
     expect(confirmNonce).not.toContain(suggestion.id);
     await expect(
-      createCallbackTokenService(database.db).resolve({ action: 'confirm', nonce: confirmNonce }),
+      createCallbackTokenService(database.db).claim({ action: 'confirm', nonce: confirmNonce }),
     ).resolves.toMatchObject({ kind: 'suggestion', suggestionId: suggestion.id });
     await expect(
-      createCallbackTokenService(database.db).resolve({ action: 'edit', nonce: confirmNonce }),
+      createCallbackTokenService(database.db).claim({ action: 'confirm', nonce: confirmNonce }),
     ).rejects.toMatchObject({ code: 'CALLBACK_UNAVAILABLE' });
+    await expect(
+      createCallbackTokenService(database.db).claim({ action: 'edit', nonce: confirmNonce }),
+    ).rejects.toMatchObject({ code: 'CALLBACK_UNAVAILABLE' });
+    const racingClaims = await Promise.allSettled([
+      createCallbackTokenService(database.db).claim({ action: 'edit', nonce: editNonce }),
+      createCallbackTokenService(database.db).claim({ action: 'edit', nonce: editNonce }),
+    ]);
+    expect(racingClaims.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(racingClaims.filter((result) => result.status === 'rejected')).toHaveLength(1);
   });
 });

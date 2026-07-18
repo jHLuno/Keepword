@@ -69,7 +69,7 @@ export function createCommitmentActionCallbackHandler<TQueryResult extends PgQue
     const telegramUserId = callback.from.id;
     try {
       const signedCallback = parseSignedCallbackData(callback.data, input.callbackSigningSecret);
-      const resolvedCallback = await createCallbackTokenService(input.database).resolve(signedCallback);
+      const resolvedCallback = await createCallbackTokenService(input.database).claim(signedCallback);
       const currentAdminChecker = input.isCurrentChatAdmin ?? messenger.isCurrentChatAdmin ?? (() => Promise.resolve(false));
       if (resolvedCallback.kind === 'commitment') {
         if (signedCallback.action === 'reschedule') {

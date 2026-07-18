@@ -1,7 +1,7 @@
 import { and, eq, gt, isNull } from 'drizzle-orm';
 import type { PgQueryResultHKT } from 'drizzle-orm/pg-core';
 
-import { chats, commitmentSuggestions, suggestionEditSessions, users } from '../db/schema.js';
+import { chats, commitmentRescheduleSessions, commitmentSuggestions, suggestionEditSessions, users } from '../db/schema.js';
 import { normalizeSuggestionTitle } from '../repositories/commitments.js';
 import type { RepositoryDatabase } from '../repositories/database.js';
 
@@ -130,8 +130,25 @@ export function createSuggestionEditSessionService<TQueryResult extends PgQueryR
           .where(
             and(
               eq(suggestionEditSessions.actorUserId, input.actorUserId),
-              eq(suggestionEditSessions.suggestionId, input.suggestionId),
               isNull(suggestionEditSessions.usedAt),
+            ),
+          );
+        const actorRows = await transaction
+          .select({ telegramUserId: users.telegramUserId })
+          .from(users)
+          .where(eq(users.id, input.actorUserId))
+          .limit(1);
+        const actor = actorRows[0];
+        if (!actor) {
+          throw new SuggestionEditSessionError('EDIT_SESSION_UNAVAILABLE');
+        }
+        await transaction
+          .update(commitmentRescheduleSessions)
+          .set({ usedAt: new Date() })
+          .where(
+            and(
+              eq(commitmentRescheduleSessions.actorTelegramUserId, actor.telegramUserId),
+              isNull(commitmentRescheduleSessions.usedAt),
             ),
           );
         await transaction.insert(suggestionEditSessions).values({

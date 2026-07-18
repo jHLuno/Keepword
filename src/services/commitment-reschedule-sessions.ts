@@ -1,7 +1,7 @@
 import { and, eq, gt, isNull } from 'drizzle-orm';
 import type { PgQueryResultHKT } from 'drizzle-orm/pg-core';
 
-import { chats, commitmentRescheduleSessions, commitments, users } from '../db/schema.js';
+import { chats, commitmentRescheduleSessions, commitments, suggestionEditSessions, users } from '../db/schema.js';
 import type { CurrentChatAdminChecker } from './authorize-action.js';
 import type { RepositoryDatabase } from '../repositories/database.js';
 
@@ -127,10 +127,33 @@ export function createCommitmentRescheduleService<TQueryResult extends PgQueryRe
 
     async begin(input) {
       await authorize(input.commitmentId, input.telegramChatId, input.actorTelegramUserId);
-      await database.insert(commitmentRescheduleSessions).values({
-        actorTelegramUserId: input.actorTelegramUserId,
-        commitmentId: input.commitmentId,
-        expiresAt: new Date(Date.now() + sessionLifetimeMs),
+      await database.transaction(async (transaction) => {
+        await transaction
+          .update(commitmentRescheduleSessions)
+          .set({ usedAt: new Date() })
+          .where(
+            and(
+              eq(commitmentRescheduleSessions.actorTelegramUserId, input.actorTelegramUserId),
+              isNull(commitmentRescheduleSessions.usedAt),
+            ),
+          );
+        const actorRows = await transaction
+          .select({ id: users.id })
+          .from(users)
+          .where(eq(users.telegramUserId, input.actorTelegramUserId))
+          .limit(1);
+        const actor = actorRows[0];
+        if (actor) {
+          await transaction
+            .update(suggestionEditSessions)
+            .set({ usedAt: new Date() })
+            .where(and(eq(suggestionEditSessions.actorUserId, actor.id), isNull(suggestionEditSessions.usedAt)));
+        }
+        await transaction.insert(commitmentRescheduleSessions).values({
+          actorTelegramUserId: input.actorTelegramUserId,
+          commitmentId: input.commitmentId,
+          expiresAt: new Date(Date.now() + sessionLifetimeMs),
+        });
       });
     },
 

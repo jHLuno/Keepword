@@ -120,4 +120,46 @@ describe('private suggestion editing', () => {
 
     expect(sentMessages).toEqual([]);
   });
+
+  test('supersedes an actors earlier edit session so private input targets only the latest suggestion', async () => {
+    const chat = await createConnectChat(database.db)({
+      adminTelegramUserId: '9202',
+      telegramChatId: '-1009202',
+      timezone: 'UTC',
+      title: 'Edit session supersession test',
+    });
+    const messages = createMessagesRepository(database.db);
+    const [firstSource, secondSource] = await Promise.all([
+      messages.persistCandidateSourceMessage({
+        author: { firstName: 'Daniyar', telegramUserId: 9202 }, chatId: chat.chatId,
+        sentAt: new Date('2026-07-18T09:00:00.000Z'), telegramMessageId: 1, text: 'Первое КП', workspaceId: chat.workspaceId,
+      }),
+      messages.persistCandidateSourceMessage({
+        author: { firstName: 'Daniyar', telegramUserId: 9202 }, chatId: chat.chatId,
+        sentAt: new Date('2026-07-18T09:01:00.000Z'), telegramMessageId: 2, text: 'Второе КП', workspaceId: chat.workspaceId,
+      }),
+    ]);
+    const membership = (await database.db.select({ userId: chatMemberships.userId }).from(chatMemberships)
+      .where(and(eq(chatMemberships.chatId, chat.chatId), eq(chatMemberships.workspaceId, chat.workspaceId))).limit(1))[0];
+    if (!membership) throw new Error('Expected membership');
+    const createPending = (sourceMessageId: string, title: string) => createSuggestion(database.db)({
+      assigneeUserId: membership.userId, chatId: chat.chatId, confidence: 'high', description: null, dueAt: null,
+      dueDateText: 'сегодня', needsAssigneeClarification: false, needsDueDateClarification: false, sourceMessageId, title, workspaceId: chat.workspaceId,
+    });
+    const [firstSuggestion, secondSuggestion] = await Promise.all([
+      createPending(firstSource.id, 'Первое КП'), createPending(secondSource.id, 'Второе КП'),
+    ]);
+    const sessions = createSuggestionEditSessionService(database.db);
+    await sessions.begin({ actorUserId: membership.userId, suggestionId: firstSuggestion.id });
+    await sessions.begin({ actorUserId: membership.userId, suggestionId: secondSuggestion.id });
+
+    await expect(sessions.apply({ actorUserId: membership.userId, patch: { title: 'Нельзя изменить' }, suggestionId: firstSuggestion.id }))
+      .rejects.toMatchObject({ code: 'EDIT_SESSION_UNAVAILABLE' });
+    await sessions.apply({ actorUserId: membership.userId, patch: { title: 'Меняется только второе' }, suggestionId: secondSuggestion.id });
+
+    const rows = await database.db.select().from(commitmentSuggestions)
+      .where(and(eq(commitmentSuggestions.chatId, chat.chatId), eq(commitmentSuggestions.workspaceId, chat.workspaceId)));
+    expect(rows.find((row) => row.id === firstSuggestion.id)?.title).toBe('Первое КП');
+    expect(rows.find((row) => row.id === secondSuggestion.id)?.title).toBe('Меняется только второе');
+  });
 });

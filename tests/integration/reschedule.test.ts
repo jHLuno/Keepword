@@ -55,3 +55,31 @@ test('reschedules an overdue commitment only for its assignee and reopens it wit
   await expect(service.apply({ actor: { firstName: 'Daniyar', telegramUserId: 9301 }, dueDateText: 'завтра' }))
     .resolves.toMatchObject({ dueDateText: 'завтра', status: 'open' });
 });
+
+test('supersedes an earlier reschedule session for the same Telegram actor', async () => {
+  const chat = await createConnectChat(database.db)({
+    adminTelegramUserId: '9302',
+    telegramChatId: '-1009302',
+    timezone: 'UTC',
+    title: 'Reschedule supersession test',
+  });
+  const membership = (await database.db.select({ userId: chatMemberships.userId }).from(chatMemberships)
+    .where(and(eq(chatMemberships.chatId, chat.chatId), eq(chatMemberships.workspaceId, chat.workspaceId))).limit(1))[0];
+  if (!membership) throw new Error('Expected membership');
+  const createOverdue = (title: string) => database.db.insert(commitments).values({
+    assigneeUserId: membership.userId, chatId: chat.chatId, dueDateText: 'вчера', status: 'overdue', title, workspaceId: chat.workspaceId,
+  }).returning();
+  const [firstRows, secondRows] = await Promise.all([createOverdue('Первое'), createOverdue('Второе')]);
+  const first = firstRows[0];
+  const second = secondRows[0];
+  if (!first || !second) throw new Error('Expected commitments');
+  const service = createCommitmentRescheduleService(database.db, () => Promise.resolve(false));
+  await service.begin({ actorTelegramUserId: 9302, commitmentId: first.id, telegramChatId: '-1009302' });
+  await service.begin({ actorTelegramUserId: 9302, commitmentId: second.id, telegramChatId: '-1009302' });
+
+  await service.apply({ actor: { firstName: 'Daniyar', telegramUserId: 9302 }, dueDateText: 'пятница' });
+
+  const rows = await database.db.select().from(commitments).where(eq(commitments.chatId, chat.chatId));
+  expect(rows.find((row) => row.id === first.id)).toMatchObject({ dueDateText: 'вчера', status: 'overdue' });
+  expect(rows.find((row) => row.id === second.id)).toMatchObject({ dueDateText: 'пятница', status: 'open' });
+});

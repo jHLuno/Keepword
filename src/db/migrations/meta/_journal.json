@@ -43,6 +43,13 @@
       "when": 1784390000000,
       "tag": "0005_commitment_reschedule_sessions",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1784391000000,
+      "tag": "0006_callback_token_consumption",
+      "breakpoints": true
     }
   ]
 }

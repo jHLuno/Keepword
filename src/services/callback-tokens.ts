@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 
-import { and, eq, gt } from 'drizzle-orm';
+import { and, eq, gt, isNull } from 'drizzle-orm';
 import type { PgQueryResultHKT } from 'drizzle-orm/pg-core';
 
 import { callbackTokens } from '../db/schema.js';
@@ -30,7 +30,7 @@ export type CallbackTokenService = Readonly<{
     actions: readonly SuggestionCallbackAction[];
     suggestionId: string;
   }>) => Promise<Readonly<Partial<Record<SuggestionCallbackAction, string>>>>;
-  resolve: (input: Readonly<{ action: CallbackAction; nonce: string }>) => Promise<
+  claim: (input: Readonly<{ action: CallbackAction; nonce: string }>) => Promise<
     | Readonly<{ kind: 'suggestion'; suggestionId: string }>
     | Readonly<{ commitmentId: string; kind: 'commitment' }>
   >;
@@ -76,18 +76,19 @@ export function createCallbackTokenService<TQueryResult extends PgQueryResultHKT
       return issue(input.actions, { suggestionId: input.suggestionId });
     },
 
-    async resolve(input) {
+    async claim(input) {
       const rows = await database
-        .select()
-        .from(callbackTokens)
+        .update(callbackTokens)
+        .set({ consumedAt: new Date() })
         .where(
           and(
             eq(callbackTokens.action, input.action),
             eq(callbackTokens.nonceHash, hashNonce(input.nonce)),
             gt(callbackTokens.expiresAt, new Date()),
+            isNull(callbackTokens.consumedAt),
           ),
         )
-        .limit(1);
+        .returning();
       const token = rows[0];
       if (!token) {
         throw new CallbackTokenError();
