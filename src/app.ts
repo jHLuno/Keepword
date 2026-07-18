@@ -13,6 +13,7 @@ import { createConnectChat } from './services/connect-chat.js';
 import { createOnboardingInvitationService } from './services/onboarding-invitation.js';
 import { createAnalyzeGroupMessage, type AnalyzeGroupMessage } from './services/analyze-message.js';
 import { createTelegramBot, type TelegramAdapterFactory } from './telegram/bot.js';
+import { createCommitmentActionCallbackHandler } from './telegram/handlers/callback.js';
 import { createGroupUpdateHandler } from './telegram/handlers/group.js';
 import type { PgQueryResultHKT } from 'drizzle-orm/pg-core';
 
@@ -62,9 +63,14 @@ export function buildApp<TQueryResult extends PgQueryResultHKT>(
     connectChat,
     onboardingInvitations,
   });
+  const callbackUpdateHandler = createCommitmentActionCallbackHandler({
+    callbackSigningSecret: config.callbackSigningSecret,
+    database: dependencies.database,
+    logger,
+  });
   const telegram = dependencies.telegramAdapterFactory
-    ? dependencies.telegramAdapterFactory(groupUpdateHandler)
-    : createTelegramBot({ groupUpdateHandler, token: config.telegramBotToken });
+    ? dependencies.telegramAdapterFactory(groupUpdateHandler, callbackUpdateHandler)
+    : createTelegramBot({ callbackUpdateHandler, groupUpdateHandler, token: config.telegramBotToken });
   const updates = createUpdatesRepository(dependencies.database);
 
   const app = Fastify({ logger: false });

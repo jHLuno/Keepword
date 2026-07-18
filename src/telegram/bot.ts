@@ -2,6 +2,7 @@ import { Bot, type Context } from 'grammy';
 import type { Update } from 'grammy/types';
 
 import type { GroupMessenger, GroupUpdateHandler, OnboardingCard } from './handlers/group.js';
+import type { CallbackMessenger, CommitmentActionCallbackHandler } from './handlers/callback.js';
 
 export type TelegramUpdate = Readonly<{
   payload: unknown;
@@ -12,7 +13,10 @@ export type TelegramAdapter = Readonly<{
   handleUpdate: (update: TelegramUpdate) => Promise<void>;
 }>;
 
-export type TelegramAdapterFactory = (groupUpdateHandler: GroupUpdateHandler) => TelegramAdapter;
+export type TelegramAdapterFactory = (
+  groupUpdateHandler: GroupUpdateHandler,
+  callbackUpdateHandler?: CommitmentActionCallbackHandler,
+) => TelegramAdapter;
 
 function createGrammYMessenger(context: Context): GroupMessenger {
   return {
@@ -39,7 +43,25 @@ function createGrammYMessenger(context: Context): GroupMessenger {
   };
 }
 
+function createGrammYCallbackMessenger(context: Context): CallbackMessenger {
+  return {
+    async answerCallbackQuery(input) {
+      await context.api.answerCallbackQuery(input.callbackQueryId, { text: input.text });
+    },
+
+    async isCurrentChatAdmin(input) {
+      const member = await context.api.getChatMember(Number(input.telegramChatId), input.telegramUserId);
+      return member.status === 'administrator' || member.status === 'creator';
+    },
+
+    async sendActionFeedback(input) {
+      await context.api.sendMessage(Number(input.telegramChatId), input.text);
+    },
+  };
+}
+
 export function createTelegramBot(input: Readonly<{
+  callbackUpdateHandler?: CommitmentActionCallbackHandler;
   groupUpdateHandler: GroupUpdateHandler;
   token: string;
 }>): TelegramAdapter {
@@ -56,6 +78,16 @@ export function createTelegramBot(input: Readonly<{
     await input.groupUpdateHandler(
       { payload: context.update, updateId: context.update.update_id },
       createGrammYMessenger(context),
+    );
+  });
+
+  bot.on('callback_query', async (context) => {
+    if (!input.callbackUpdateHandler) {
+      return;
+    }
+    await input.callbackUpdateHandler(
+      { payload: context.update, updateId: context.update.update_id },
+      createGrammYCallbackMessenger(context),
     );
   });
 
