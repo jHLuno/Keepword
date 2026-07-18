@@ -14,7 +14,7 @@
 - The prefilter retains `созвонюсь`, `составлю КП`, direct assignments, and English commitments.
 - The prefilter rejects greetings, discussion questions, and completed past-tense messages.
 - Do not log message text or secrets.
-- Direct versions are `drizzle-orm@0.45.2` and `drizzle-kit@0.31.10`.
+- Direct versions are `drizzle-orm@0.45.2` and `drizzle-kit@0.31.10`; `pnpm-workspace.yaml` pins `@esbuild-kit/core-utils>esbuild` to `0.28.1`.
 
 ### Task 1: Restore prefilter
 
@@ -28,10 +28,11 @@
 
 ### Task 2: Upgrade dependencies
 
-**Files:** Modify `package.json` and `pnpm-lock.yaml`.
+**Files:** Modify `package.json`, `pnpm-lock.yaml`, and `pnpm-workspace.yaml`.
 
 1. Run `pnpm up drizzle-orm@0.45.2 drizzle-kit@0.31.10`.
-2. Verify `pnpm why drizzle-orm`, `pnpm why drizzle-kit`, and `pnpm audit --prod --audit-level=moderate`.
+2. Add the root `pnpm-workspace.yaml` override `"@esbuild-kit/core-utils>esbuild": 0.28.1`, preserving the single-package workspace declaration.
+3. Verify `pnpm why drizzle-orm`, `pnpm why drizzle-kit`, `pnpm why esbuild`, `pnpm audit --prod --audit-level=moderate`, and `pnpm exec drizzle-kit --version`.
 
 ### Task 3: Verify and document
 

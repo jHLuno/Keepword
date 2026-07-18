@@ -1,5 +1,5 @@
 import { and, count, eq } from 'drizzle-orm';
-import { afterAll, beforeAll, describe, expect, test } from 'vitest';
+import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
 
 import type { CommitmentCandidate } from '../../src/domain/extraction.js';
 import { createAnalyzeGroupMessage } from '../../src/services/analyze-message.js';
@@ -162,6 +162,21 @@ describe('suggestions', () => {
 
     await expect(duplicateAnalyzer(createMessage(3))).resolves.toBe('skipped');
     expect(replies).toHaveLength(0);
+  });
+
+  test('does not send a prefilter-rejected message to the extractor', async () => {
+    await connectTestChat();
+    const extractCandidate = vi.fn((input: { message: { id: string } }) => Promise.resolve({
+      ...highConfidenceCandidate,
+      source_message_ids: [input.message.id],
+    }));
+    const analyzer = createAnalyzeGroupMessage(database.db, { extractCandidate }, {
+      sendSuggestionReply: () => Promise.resolve(),
+      sendClarificationRequest: () => Promise.resolve(),
+    }, 'callback-test-secret');
+
+    await expect(analyzer({ ...createMessage(30), text: 'Доброе утро, коллеги!' })).resolves.toBe('skipped');
+    expect(extractCandidate).not.toHaveBeenCalled();
   });
 
   test('asks one concise clarification for a medium-confidence follow-up without creating a suggestion', async () => {

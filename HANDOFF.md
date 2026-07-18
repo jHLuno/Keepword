@@ -1,4 +1,14 @@
-[Earlier entries](docs/archive/HANDOFF-pre-S04.md)
+[Earlier entries](docs/archive/HANDOFF-pre-S04.md) · [2026-07-19 archive](docs/archive/HANDOFF-2026-07-19-pre-filter.md)
+
+## 2026-07-19 — Handoff
+
+### Done
+- Restored selective local AI prefiltering, including Russian and English action, assignment, obligation, and deadline patterns.
+- Rejected messages do not reach OpenRouter and emit only safe identifier-based logs.
+- Resolved the production dependency audit by updating Drizzle packages and applying a scoped esbuild override.
+
+### Next recommended step
+- After Railway auto-deploys, send `Я созвонюсь с Анель завтра` and `Составлю КП к вечеру` in a test group; confirm cards appear and a greeting produces no OpenRouter request.
 
 ## 2026-07-19 — Handoff
 
@@ -10,23 +20,3 @@
 
 ### Next recommended step
 - Decide whether `/check` should paginate or truncate summaries before teams accumulate enough active commitments to hit Telegram's message limit.
-
-## 2026-07-19 — Handoff
-
-### Done
-- Safe production diagnostics now unwrap grammY handler errors.
-
-### Next recommended step
-- Redeploy the Web service and inspect the next `telegram_update_dispatch_failed` error code.
-
-## 2026-07-19 — Handoff
-
-### Done
-- Delivered private `/check`: the caller sees only their active overdue, open, and blocked commitments across active connected chats, grouped by status and labelled with the source chat.
-- Added integration coverage for access scoping and the empty state; updated product documentation.
-
-### Not done
-- Manual Railway check was not executed from this workspace: personal `/check` must show only the caller's active tasks.
-
-### Next recommended step
-- In Railway, send `/check` to the personal bot and confirm it shows only the caller's active tasks.

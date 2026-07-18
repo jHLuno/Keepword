@@ -1,5 +1,6 @@
 import type { PgQueryResultHKT } from 'drizzle-orm/pg-core';
 
+import { isPotentialCommitment } from '../ai/prefilter.js';
 import type { CommitmentExtractor } from '../ai/extractor.js';
 import type { CommitmentCandidate } from '../domain/extraction.js';
 import type { Logger } from '../observability/logger.js';
@@ -104,6 +105,14 @@ export function createAnalyzeGroupMessage<TQueryResult extends PgQueryResultHKT>
       return 'skipped';
     }
     if (chat.mode === 'manual' && !input.manualCapture) {
+      return 'skipped';
+    }
+    if (!isPotentialCommitment(input.text)) {
+      logger?.info('message_skipped_by_pre_filter', {
+        telegramChatId: input.telegramChatId,
+        telegramUserId: String(input.author.telegramUserId),
+        workspaceId: chat.workspaceId,
+      });
       return 'skipped';
     }
 

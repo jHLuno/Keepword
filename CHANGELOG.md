@@ -1,4 +1,16 @@
-[Earlier entries](docs/archive/CHANGELOG-pre-S04.md)
+[Earlier entries](docs/archive/CHANGELOG-pre-S04.md) · [2026-07-19 archive](docs/archive/CHANGELOG-2026-07-19-pre-filter.md)
+
+## 2026-07-19 — Selective AI filter and dependency security
+
+### Changed
+- Restored a local commitment prefilter before OpenRouter extraction. It recognises broad Russian and English task actions, assignments, obligation cues, and deadlines without sending ordinary chat messages to the LLM.
+- Added the safe `message_skipped_by_pre_filter` event, containing only identifiers.
+- Updated `drizzle-orm` to `0.45.2`, `drizzle-kit` to `0.31.10`, and pinned Drizzle Kit's transitive `esbuild` to `0.28.1`.
+
+### Verified
+- `pnpm vitest run tests/unit/prefilter.test.ts tests/integration/suggestions.test.ts` — 17 tests passed after expected RED failures.
+- `pnpm audit --prod --audit-level=moderate` — no known vulnerabilities.
+- `pnpm lint && pnpm typecheck && pnpm test && pnpm build` — 27 test files and 132 tests passed.
 
 ## 2026-07-19 — Private /check onboarding scope
 
@@ -9,21 +21,3 @@
 ### Verified
 - `pnpm vitest run tests/integration/commands.test.ts` — 10 tests passed after two expected RED failures.
 - `pnpm lint && pnpm typecheck && pnpm test && pnpm build` — 27 test files and 125 tests passed.
-
-## 2026-07-19 — grammY error unwrapping
-
-### Fixed
-- Production error diagnostics now inspect grammY's wrapped `error` and `cause` values while preserving safe log redaction.
-
-### Verified
-- `pnpm lint && pnpm typecheck && pnpm test && pnpm build` — 26 test files and 121 tests passed.
-
-## 2026-07-19 — Private /check command
-
-### Added
-- Private `/check` summary of the caller's active overdue, open, and blocked commitments across active connected groups.
-- Chat labels, fixed status sections, and an empty state without exposing teammate, completed, cancelled, or inactive-chat commitments.
-
-### Verified
-- `pnpm vitest run tests/integration/commands.test.ts` — 9 tests passed.
-- `pnpm lint && pnpm typecheck && pnpm test && pnpm build` — 27 test files and 124 tests passed.

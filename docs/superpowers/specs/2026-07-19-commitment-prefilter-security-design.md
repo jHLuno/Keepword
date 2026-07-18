@@ -17,8 +17,9 @@ Restore a low-cost message gate so Keepword does not send every group message to
 ## Dependency security
 
 - Upgrade `drizzle-orm` from `0.44.7` to `0.45.2`, the first version that fixes GHSA-gpj5-g38j-94v9 / CVE-2026-39356.
-- Upgrade `drizzle-kit` from `0.31.4` to `0.31.10`, resolving the audited transitive `esbuild` advisory.
-- Keep package upgrades limited to these two direct dependencies and their lockfile resolutions.
+- Upgrade `drizzle-kit` from `0.31.4` to `0.31.10`.
+- Pin `@esbuild-kit/core-utils>esbuild` to `0.28.1` in `pnpm-workspace.yaml`, resolving the audited transitive `esbuild` advisory while retaining the current Drizzle Kit release.
+- Keep package upgrades limited to these two direct dependencies, the one transitive security override, and their lockfile resolutions.
 
 ## Verification
 
