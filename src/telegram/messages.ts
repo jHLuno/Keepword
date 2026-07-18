@@ -1,4 +1,5 @@
 import { createSignedCallback } from './callback-data.js';
+import type { DigestSummary, TeamRiskSummary } from '../services/send-digest.js';
 
 export type InlineKeyboardMarkup = Readonly<{
   inline_keyboard: InlineKeyboardButton[][];
@@ -149,4 +150,51 @@ export function renderReminderCard(
     }, callbackSigningSecret),
     text: `${heading}\n\n${reminder.title}${dueLine}`,
   };
+}
+
+function attentionLabel(attention: DigestSummary['items'][number]['attention']): string {
+  switch (attention) {
+    case 'due-today':
+      return 'Срок: сегодня';
+    case 'due-tomorrow':
+      return 'Срок: завтра';
+    case 'no-deadline':
+      return 'Нет срока';
+    case 'overdue':
+      return 'Просрочено';
+  }
+}
+
+export function renderUserDigest(summary: DigestSummary): string {
+  const items = summary.items.length === 0
+    ? '— нет задач, требующих внимания'
+    : summary.items.map((item) => `— ${item.title}\n  ${attentionLabel(item.attention)}`).join('\n');
+  return [
+    '📋 Личная вечерняя сводка',
+    '',
+    `Выполнено сегодня: ${summary.completedToday}`,
+    `Открыто: ${summary.open}`,
+    `Просрочено: ${summary.overdue}`,
+    `На завтра: ${summary.dueTomorrow}`,
+    '',
+    'Требуют внимания:',
+    items,
+  ].join('\n');
+}
+
+export function renderAdminDigest(summary: TeamRiskSummary): string {
+  const risks = summary.riskTitles.length === 0
+    ? '— рисков нет'
+    : summary.riskTitles.map((title) => `— ${title}`).join('\n');
+  return [
+    '📊 Риски команды',
+    '',
+    `Выполнено сегодня: ${summary.completedToday}`,
+    `Открыто: ${summary.open}`,
+    `Просрочено: ${summary.overdue}`,
+    `На завтра: ${summary.dueTomorrow}`,
+    '',
+    'Задачи с риском:',
+    risks,
+  ].join('\n');
 }

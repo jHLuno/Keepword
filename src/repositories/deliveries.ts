@@ -12,7 +12,7 @@ export type DeliveriesRepository = Readonly<{
   claimDelivery: (key: string) => Promise<DeliveryClaimResult>;
   createAndClaimDelivery: (input: Readonly<{
     chatId: string;
-    commitmentId: string;
+    commitmentId: string | null;
     idempotencyKey: string;
     kind: string;
     userId: string;
