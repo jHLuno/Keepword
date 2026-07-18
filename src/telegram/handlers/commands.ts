@@ -145,7 +145,7 @@ export function createPrivateCommandHandler<TQueryResult extends PgQueryResultHK
           inArray(commitments.status, ['open', 'overdue', 'blocked']),
         ),
       )
-      .orderBy(asc(commitments.dueAt), asc(commitments.createdAt))
+      .orderBy(asc(commitments.dueAt), asc(commitments.createdAt), asc(commitments.id))
       .limit(checkPageSize + 1)
       .offset(input.page * checkPageSize),
       reliabilityRepository.findUserCrossChatReliability({ now, telegramUserId: input.telegramUserId }),

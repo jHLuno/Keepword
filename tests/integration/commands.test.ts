@@ -6,6 +6,7 @@ import { createConnectChat } from '../../src/services/connect-chat.js';
 import { createOnboardingInvitationService } from '../../src/services/onboarding-invitation.js';
 import { createOnboardingService } from '../../src/services/onboarding.js';
 import { createGroupUpdateHandler } from '../../src/telegram/handlers/group.js';
+import { createPrivateCommandHandler } from '../../src/telegram/handlers/commands.js';
 import { createPrivateUpdateHandler } from '../../src/telegram/handlers/private.js';
 import { createCommitmentActionCallbackHandler } from '../../src/telegram/handlers/callback.js';
 import { createFakeTelegram } from '../helpers/fake-telegram.js';
@@ -284,6 +285,7 @@ describe('Telegram commands', () => {
       assigneeUserId: actor.id,
       chatId: index % 2 === 0 ? firstChat.chatId : secondChat.chatId,
       dueDateText: `день ${index + 1}`,
+      dueAt: new Date(`2026-07-${String(index + 1).padStart(2, '0')}T00:00:00.000Z`),
       status: 'open' as const,
       title: `Task ${index + 1}`,
       workspaceId: index % 2 === 0 ? firstChat.workspaceId : secondChat.workspaceId,
@@ -383,6 +385,58 @@ describe('Telegram commands', () => {
       },
     });
     expect(edited[1]?.text).toContain('Task 1');
+  });
+
+  test('uses a stable commitment id tie-breaker when private check pagination timestamps match', async () => {
+    const actorTelegramUserId = 9845;
+    const chat = await createConnectChat(database.db)({
+      adminTelegramUserId: String(actorTelegramUserId), telegramChatId: '-1009845', timezone: 'UTC', title: 'Stable check order',
+    });
+    const actor = (await database.db.select().from(users).where(eq(users.telegramUserId, actorTelegramUserId)).limit(1))[0];
+    if (!actor) throw new Error('Expected actor');
+    await database.db.update(users).set({ privateChatStartedAt: new Date() }).where(eq(users.id, actor.id));
+    await database.db.update(chatMemberships).set({ notificationsConnectedAt: new Date() }).where(and(
+      eq(chatMemberships.userId, actor.id),
+      eq(chatMemberships.chatId, chat.chatId),
+      eq(chatMemberships.workspaceId, chat.workspaceId),
+    ));
+
+    const sharedTimestamp = new Date('2026-07-19T00:00:00.000Z');
+    await database.db.insert(commitments).values(Array.from({ length: 6 }, (_, index) => {
+      const sequence = 6 - index;
+      return {
+        assigneeUserId: actor.id,
+        chatId: chat.chatId,
+        createdAt: sharedTimestamp,
+        dueAt: sharedTimestamp,
+        id: `00000000-0000-0000-0000-00000000000${sequence}`,
+        status: 'open' as const,
+        title: `Stable task ${sequence}`,
+        workspaceId: chat.workspaceId,
+      };
+    }));
+
+    const handler = createPrivateCommandHandler(database.db);
+    const firstPage = await handler.getCheckPage({ page: 0, telegramUserId: actorTelegramUserId });
+    const secondPage = await handler.getCheckPage({ page: 1, telegramUserId: actorTelegramUserId });
+    const titleMatches = (text: string | undefined): string[] => [...(text ?? '').matchAll(/Stable task \d/g)].map((match) => match[0]);
+
+    expect(titleMatches(firstPage.text)).toEqual([
+      'Stable task 1',
+      'Stable task 2',
+      'Stable task 3',
+      'Stable task 4',
+      'Stable task 5',
+    ]);
+    expect(titleMatches(secondPage.text)).toEqual(['Stable task 6']);
+    expect(new Set([...titleMatches(firstPage.text), ...titleMatches(secondPage.text)])).toEqual(new Set([
+      'Stable task 1',
+      'Stable task 2',
+      'Stable task 3',
+      'Stable task 4',
+      'Stable task 5',
+      'Stable task 6',
+    ]));
   });
 
   test('allows the assignee to complete a commitment from their private check', async () => {
