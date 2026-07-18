@@ -32,10 +32,11 @@ export type AppDependencies<TQueryResult extends PgQueryResultHKT> = Readonly<{
   analyzeGroupMessage?: AnalyzeGroupMessage;
   database: RepositoryDatabase<TQueryResult>;
   logger?: Logger;
+  runJobs?: () => Promise<void>;
   telegramAdapterFactory?: TelegramAdapterFactory;
 }>;
 
-function hasValidWebhookSecret(receivedSecret: string | string[] | undefined, expectedSecret: string): boolean {
+function hasValidSecret(receivedSecret: string | string[] | undefined, expectedSecret: string): boolean {
   if (typeof receivedSecret !== 'string') {
     return false;
   }
@@ -94,8 +95,42 @@ export function buildApp<TQueryResult extends PgQueryResultHKT>(
 
   app.get('/health', () => ({ status: 'ok' }));
 
+  app.post('/internal/run-jobs', async (request, reply) => {
+    if (!hasValidSecret(request.headers.authorization, `Bearer ${config.workerSecret}`)) {
+      logger.info('authorization_denied', {
+        errorCode: 'INVALID_WORKER_SECRET',
+        requestId: request.id,
+        result: 'failure',
+      });
+      return reply.code(401).send();
+    }
+
+    if (!dependencies.runJobs) {
+      logger.error('internal_jobs_run_failed', {
+        errorCode: 'JOB_RUNNER_UNAVAILABLE',
+        requestId: request.id,
+        result: 'failure',
+      });
+      return reply.code(503).send();
+    }
+
+    try {
+      await dependencies.runJobs();
+    } catch (error: unknown) {
+      logger.error('internal_jobs_run_failed', {
+        errorCode: error instanceof Error ? 'JOB_RUNNER_FAILED' : 'UNKNOWN_JOB_RUNNER_FAILURE',
+        requestId: request.id,
+        result: 'failure',
+      });
+      return reply.code(500).send();
+    }
+
+    logger.info('internal_jobs_run_completed', { requestId: request.id, result: 'success' });
+    return reply.code(200).send({ status: 'ok' });
+  });
+
   app.post('/telegram/webhook', async (request, reply) => {
-    if (!hasValidWebhookSecret(request.headers['x-telegram-bot-api-secret-token'], config.telegramWebhookSecret)) {
+    if (!hasValidSecret(request.headers['x-telegram-bot-api-secret-token'], config.telegramWebhookSecret)) {
       logger.info('authorization_denied', {
         errorCode: 'INVALID_TELEGRAM_WEBHOOK_SECRET',
         requestId: request.id,
