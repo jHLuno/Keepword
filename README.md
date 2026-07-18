@@ -49,6 +49,8 @@ pnpm db:migrate
 
 Configure Telegram after Railway assigns the web service a public HTTPS domain. Set the webhook URL to `https://<web-domain>/telegram/webhook` and set Telegram's webhook secret token to the same value as `TELEGRAM_WEBHOOK_SECRET`. Do not put that secret in the URL.
 
+Use the [MVP release checklist](docs/release-checklist.md) before each Railway deployment. It includes backup, migration, webhook registration, worker, monitoring, rollback, and staging verification steps.
+
 ### Staging smoke test
 
 1. Use a separate staging bot, database, and all-new secret values.

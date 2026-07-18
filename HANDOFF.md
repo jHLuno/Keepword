@@ -1,6 +1,22 @@
 ## 2026-07-18 — Handoff
 
 ### Done
+- Added an end-to-end MVP release regression and a deployment release checklist.
+- Verified linting, strict types, the full test suite, and the production build.
+- Confirmed the product documentation still reflects delivered MVP behavior.
+
+### Not done
+- No live staging Railway service, Telegram webhook, non-production bot, or database was created from this workspace.
+
+### Risks / blockers
+- An operator with isolated staging credentials must perform the manual staging webhook smoke test before production release.
+
+### Next recommended step
+- Follow `docs/release-checklist.md` in staging and record the successful webhook, worker, privacy-deletion, and idempotency checks in the deployment record.
+
+## 2026-07-18 — Handoff
+
+### Done
 - Added authenticated internal job execution, shared reminder/digest runner, deployment assets, and Railway documentation.
 - Added endpoint coverage for health, rejected unauthorized requests, and an authorized job run.
 
