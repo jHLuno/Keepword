@@ -15,6 +15,17 @@ export type Logger = Readonly<{
   error: (event: string, metadata: LogMetadata) => void;
 }>;
 
+export function safeErrorCode(error: unknown, fallback: string): string {
+  if (typeof error !== 'object' || error === null || !('code' in error)) {
+    return fallback;
+  }
+  const code = error.code;
+  if (typeof code !== 'string' || !/^[A-Z0-9_]{1,32}$/.test(code)) {
+    return fallback;
+  }
+  return `${fallback}_${code}`;
+}
+
 export function serializeLog(event: string, metadata: LogMetadata, level: 'error' | 'info' = 'info'): string {
   const safeMetadata = {
     request_id: metadata.requestId,

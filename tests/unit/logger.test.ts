@@ -1,6 +1,6 @@
 import { afterEach, expect, test, vi } from 'vitest';
 
-import { createLogger, serializeLog, type LogMetadata } from '../../src/observability/logger.js';
+import { createLogger, safeErrorCode, serializeLog, type LogMetadata } from '../../src/observability/logger.js';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -45,4 +45,10 @@ test('writes only approved metadata fields', () => {
   });
   expect(serializedLog).not.toContain('privateMessageText');
   expect(serializedLog).not.toContain('this must not be logged');
+});
+
+test('uses a safe upstream error code without serializing an error message', () => {
+  const error = Object.assign(new Error('relation commitments does not exist'), { code: '42P01' });
+
+  expect(safeErrorCode(error, 'WORKER_JOBS_FAILED')).toBe('WORKER_JOBS_FAILED_42P01');
 });

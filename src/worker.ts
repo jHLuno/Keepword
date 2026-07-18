@@ -5,7 +5,7 @@ import { loadConfig, type AppConfig } from './config.js';
 import { createDatabaseClient } from './db/client.js';
 import { createDigestJob } from './jobs/digests.js';
 import { createReminderJob } from './jobs/reminders.js';
-import { createLogger } from './observability/logger.js';
+import { createLogger, safeErrorCode } from './observability/logger.js';
 import type { Logger } from './observability/logger.js';
 import type { RepositoryDatabase } from './repositories/database.js';
 import type { ReminderMessenger } from './services/send-reminder.js';
@@ -80,7 +80,10 @@ export async function startWorker(): Promise<void> {
       await runJobs();
     } catch (error: unknown) {
       logger.error('worker_jobs_failed', {
-        errorCode: error instanceof Error ? 'WORKER_JOBS_FAILED' : 'UNKNOWN_WORKER_JOBS_ERROR',
+        errorCode: safeErrorCode(
+          error,
+          error instanceof Error ? 'WORKER_JOBS_FAILED' : 'UNKNOWN_WORKER_JOBS_ERROR',
+        ),
         result: 'failure',
       });
     } finally {
