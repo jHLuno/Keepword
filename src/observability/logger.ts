@@ -16,14 +16,26 @@ export type Logger = Readonly<{
 }>;
 
 export function safeErrorCode(error: unknown, fallback: string): string {
-  if (typeof error !== 'object' || error === null || !('code' in error)) {
+  if (typeof error !== 'object' || error === null) {
     return fallback;
   }
-  const code = error.code;
-  if (typeof code !== 'string' || !/^[A-Z0-9_]{1,32}$/.test(code)) {
-    return fallback;
+  const candidate = error as Record<string, unknown>;
+  if ('code' in candidate) {
+    const code = candidate.code;
+    if (typeof code === 'string' && /^[A-Z0-9_]{1,32}$/.test(code)) {
+      return `${fallback}_${code}`;
+    }
   }
-  return `${fallback}_${code}`;
+  for (const property of ['error_code', 'status'] as const) {
+    if (!(property in candidate)) {
+      continue;
+    }
+    const status = candidate[property];
+    if (typeof status === 'number' && Number.isInteger(status) && status >= 100 && status <= 599) {
+      return `${fallback}_HTTP_${status}`;
+    }
+  }
+  return fallback;
 }
 
 export function serializeLog(event: string, metadata: LogMetadata, level: 'error' | 'info' = 'info'): string {

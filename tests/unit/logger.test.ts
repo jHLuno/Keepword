@@ -52,3 +52,11 @@ test('uses a safe upstream error code without serializing an error message', () 
 
   expect(safeErrorCode(error, 'WORKER_JOBS_FAILED')).toBe('WORKER_JOBS_FAILED_42P01');
 });
+
+test('uses a safe Telegram API status without serializing its description', () => {
+  const error = Object.assign(new Error('Bad Request: chat not found'), { error_code: 400 });
+
+  expect(safeErrorCode(error, 'TELEGRAM_UPDATE_DISPATCH_FAILED')).toBe(
+    'TELEGRAM_UPDATE_DISPATCH_FAILED_HTTP_400',
+  );
+});
