@@ -1,7 +1,7 @@
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 
-import { chatMemberships, commitments, users } from '../../src/db/schema.js';
+import { chatMemberships, chats, commitments, users } from '../../src/db/schema.js';
 import { createConnectChat } from '../../src/services/connect-chat.js';
 import { createOnboardingInvitationService } from '../../src/services/onboarding-invitation.js';
 import { createOnboardingService } from '../../src/services/onboarding.js';
@@ -98,6 +98,70 @@ describe('Telegram commands', () => {
       .from(chatMemberships)
       .where(and(eq(chatMemberships.userId, actor.id), eq(chatMemberships.workspaceId, firstChat.workspaceId)));
     expect(notificationRows).toEqual([{ chatId: firstChat.chatId, enabled: false }]);
+  });
+
+  test('shows only the requesting user active commitments across connected groups', async () => {
+    const actorTelegramUserId = 9820;
+    const firstChat = await createConnectChat(database.db)({
+      adminTelegramUserId: String(actorTelegramUserId), telegramChatId: '-1009820', timezone: 'UTC', title: 'First group',
+    });
+    const secondChat = await createConnectChat(database.db)({
+      adminTelegramUserId: String(actorTelegramUserId), telegramChatId: '-1009821', timezone: 'UTC', title: 'Second group',
+    });
+    const inactiveChat = await createConnectChat(database.db)({
+      adminTelegramUserId: String(actorTelegramUserId), telegramChatId: '-1009822', timezone: 'UTC', title: 'Inactive group',
+    });
+    const actor = (await database.db.select().from(users).where(eq(users.telegramUserId, actorTelegramUserId)).limit(1))[0];
+    if (!actor) throw new Error('Expected actor');
+    await database.db.update(users).set({ privateChatStartedAt: new Date() }).where(eq(users.id, actor.id));
+    await database.db.update(chats).set({ isActive: false }).where(eq(chats.id, inactiveChat.chatId));
+    const teammate = (await database.db.insert(users).values({ firstName: 'Teammate', telegramUserId: 9823 }).returning())[0];
+    if (!teammate) throw new Error('Expected teammate');
+    await database.db.insert(chatMemberships).values({ chatId: firstChat.chatId, userId: teammate.id, workspaceId: firstChat.workspaceId });
+    await database.db.insert(commitments).values([
+      { assigneeUserId: actor.id, chatId: firstChat.chatId, dueDateText: 'вчера', status: 'overdue', title: 'Overdue task', workspaceId: firstChat.workspaceId },
+      { assigneeUserId: actor.id, chatId: secondChat.chatId, dueDateText: 'завтра', status: 'open', title: 'Open task', workspaceId: secondChat.workspaceId },
+      { assigneeUserId: actor.id, chatId: firstChat.chatId, status: 'blocked', title: 'Blocked task', workspaceId: firstChat.workspaceId },
+      { assigneeUserId: teammate.id, chatId: firstChat.chatId, status: 'open', title: 'Private teammate task', workspaceId: firstChat.workspaceId },
+      { assigneeUserId: actor.id, chatId: firstChat.chatId, status: 'completed', title: 'Completed task', workspaceId: firstChat.workspaceId },
+      { assigneeUserId: actor.id, chatId: firstChat.chatId, status: 'cancelled', title: 'Cancelled task', workspaceId: firstChat.workspaceId },
+      { assigneeUserId: actor.id, chatId: inactiveChat.chatId, status: 'open', title: 'Inactive chat task', workspaceId: inactiveChat.workspaceId },
+    ]);
+    const handler = createPrivateUpdateHandler({ database: database.db });
+    const fakeTelegram = createFakeTelegram();
+    const adapter = fakeTelegram.telegramAdapterFactory(createNoopGroupHandler(), undefined, handler);
+
+    await adapter.handleUpdate(privateUpdate(actorTelegramUserId, '/check'));
+
+    const reply = fakeTelegram.privateMessages.at(-1) ?? '';
+    expect(reply).toContain('📋 Мои обязательства');
+    expect(reply).toContain('🔴 Просрочены');
+    expect(reply).toContain('🟡 Открытые');
+    expect(reply).toContain('🟠 Есть блокер');
+    expect(reply).toContain('[First group] Overdue task · вчера');
+    expect(reply).toContain('[Second group] Open task · завтра');
+    expect(reply).toContain('[First group] Blocked task');
+    expect(reply).not.toContain('Private teammate task');
+    expect(reply).not.toContain('Completed task');
+    expect(reply).not.toContain('Cancelled task');
+    expect(reply).not.toContain('Inactive chat task');
+  });
+
+  test('shows the check empty state when the onboarded user has no active commitments', async () => {
+    const actorTelegramUserId = 9830;
+    await createConnectChat(database.db)({
+      adminTelegramUserId: String(actorTelegramUserId), telegramChatId: '-1009830', timezone: 'UTC', title: 'Empty group',
+    });
+    const actor = (await database.db.select().from(users).where(eq(users.telegramUserId, actorTelegramUserId)).limit(1))[0];
+    if (!actor) throw new Error('Expected actor');
+    await database.db.update(users).set({ privateChatStartedAt: new Date() }).where(eq(users.id, actor.id));
+    const handler = createPrivateUpdateHandler({ database: database.db });
+    const fakeTelegram = createFakeTelegram();
+    const adapter = fakeTelegram.telegramAdapterFactory(createNoopGroupHandler(), undefined, handler);
+
+    await adapter.handleUpdate(privateUpdate(actorTelegramUserId, '/check'));
+
+    expect(fakeTelegram.privateMessages.at(-1)).toBe('📋 Мои обязательства\n\n— активных обязательств нет');
   });
 
   test('analyzes only the replied source message for group /keep', async () => {

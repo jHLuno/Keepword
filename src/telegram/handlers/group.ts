@@ -114,7 +114,7 @@ export function createGroupUpdateHandler(input: Readonly<{
       if (command?.name === 'help') {
         await messenger.sendGroupMessage?.({
           telegramChatId: String(message.chat.id),
-          text: 'Команды группы: /keep ответом на сообщение, /invite, /notifications. Личные команды: /tasks, /settings, /privacy.',
+          text: 'Команды группы: /keep ответом на сообщение, /invite, /notifications. Личные команды: /tasks, /check, /settings, /privacy.',
         });
         return;
       }
@@ -145,7 +145,7 @@ export function createGroupUpdateHandler(input: Readonly<{
         }
         return;
       }
-      if (command?.name === 'settings' || command?.name === 'start' || command?.name === 'tasks') {
+      if (command?.name === 'settings' || command?.name === 'start' || command?.name === 'tasks' || command?.name === 'check') {
         await messenger.sendGroupMessage?.({ telegramChatId: String(message.chat.id), text: 'Эта команда работает в личном чате с Keepword.' });
         return;
       }

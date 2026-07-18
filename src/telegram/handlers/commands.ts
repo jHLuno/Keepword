@@ -1,7 +1,7 @@
 import { and, asc, eq, inArray, isNotNull } from 'drizzle-orm';
 import type { PgQueryResultHKT } from 'drizzle-orm/pg-core';
 
-import { chatMemberships, chats, commitments, users } from '../../db/schema.js';
+import { chatMemberships, chats, commitments, commitmentStatus, users } from '../../db/schema.js';
 import type { RepositoryDatabase } from '../../repositories/database.js';
 
 export type TelegramCommand = Readonly<{
@@ -21,10 +21,18 @@ type ConnectedChat = Readonly<{
   workspaceId: string;
 }>;
 
+type CheckRow = Readonly<{
+  chatTitle: string;
+  dueDateText: string | null;
+  status: (typeof commitmentStatus.enumValues)[number];
+  title: string;
+}>;
+
 const privateHelpText = [
   'Keepword помогает не терять подтверждённые договорённости.',
   '',
   '/tasks — мои задачи в подключённой группе',
+  '/check — мои обязательства во всех подключённых группах',
   '/settings on|off [номер] — личные уведомления',
   '/privacy — как обрабатываются данные; удаление: /privacy delete в группе для текущего администратора',
   '',
@@ -57,6 +65,22 @@ function selectChat(chatsForUser: readonly ConnectedChat[], argument: string | n
   }
   const index = Number(argument) - 1;
   return Number.isSafeInteger(index) ? chatsForUser[index] ?? null : null;
+}
+
+function renderCheck(rows: readonly CheckRow[]): string {
+  const sections: ReadonlyArray<Readonly<{ heading: string; status: CheckRow['status'] }>> = [
+    { heading: '🔴 Просрочены', status: 'overdue' },
+    { heading: '🟡 Открытые', status: 'open' },
+    { heading: '🟠 Есть блокер', status: 'blocked' },
+  ];
+  const renderedSections = sections.flatMap(({ heading, status }) => {
+    const tasks = rows.filter((row) => row.status === status);
+    if (tasks.length === 0) {
+      return [];
+    }
+    return [`${heading}\n${tasks.map((task) => `— [${task.chatTitle}] ${task.title}${task.dueDateText ? ` · ${task.dueDateText}` : ''}`).join('\n')}`];
+  });
+  return `📋 Мои обязательства\n\n${renderedSections.length === 0 ? '— активных обязательств нет' : renderedSections.join('\n\n')}`;
 }
 
 export function createPrivateCommandHandler<TQueryResult extends PgQueryResultHKT>(
@@ -95,6 +119,28 @@ export function createPrivateCommandHandler<TQueryResult extends PgQueryResultHK
           handled: true,
           text: 'Я обрабатываю только новые сообщения подключённых групп и храню источник для подтверждённой задачи. Для удаления данных текущий администратор отправляет /privacy delete в нужной группе.',
         };
+      }
+      if (input.command.name === 'check') {
+        const rows = await database
+          .select({
+            chatTitle: chats.title,
+            dueDateText: commitments.dueDateText,
+            status: commitments.status,
+            title: commitments.title,
+          })
+          .from(commitments)
+          .innerJoin(users, eq(commitments.assigneeUserId, users.id))
+          .innerJoin(chats, and(eq(commitments.chatId, chats.id), eq(commitments.workspaceId, chats.workspaceId)))
+          .where(
+            and(
+              eq(users.telegramUserId, input.telegramUserId),
+              isNotNull(users.privateChatStartedAt),
+              eq(chats.isActive, true),
+              inArray(commitments.status, ['open', 'overdue', 'blocked']),
+            ),
+          )
+          .orderBy(asc(commitments.dueAt), asc(commitments.createdAt));
+        return { handled: true, text: renderCheck(rows) };
       }
       const chatsForUser = await connectedChats(input.telegramUserId);
       if (input.command.name === 'tasks') {
