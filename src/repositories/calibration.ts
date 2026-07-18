@@ -1,4 +1,4 @@
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, gte, lte } from 'drizzle-orm';
 import type { PgQueryResultHKT } from 'drizzle-orm/pg-core';
 
 import { suggestionEvents } from '../db/schema.js';
@@ -45,6 +45,8 @@ export function createCalibrationRepository<TQueryResult extends PgQueryResultHK
         .where(and(
           eq(suggestionEvents.workspaceId, input.workspaceId),
           eq(suggestionEvents.chatId, input.chatId),
+          gte(suggestionEvents.createdAt, windowStart),
+          lte(suggestionEvents.createdAt, input.now),
         ))
         .orderBy(asc(suggestionEvents.createdAt));
 
@@ -58,7 +60,9 @@ export function createCalibrationRepository<TQueryResult extends PgQueryResultHK
       const summary = { acceptedAsProposed: 0, editedBeforeConfirmation: 0, rejected: 0, resolved: 0 };
       for (const suggestionEventsForSuggestion of eventsBySuggestion.values()) {
         const terminalEvent = suggestionEventsForSuggestion.findLast((event) =>
-          (event.eventType === 'confirmed' || event.eventType === 'rejected') && event.createdAt >= windowStart,
+          (event.eventType === 'confirmed' || event.eventType === 'rejected')
+            && event.createdAt >= windowStart
+            && event.createdAt <= input.now,
         );
         if (!terminalEvent) {
           continue;

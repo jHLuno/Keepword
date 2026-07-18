@@ -358,7 +358,7 @@ describe('daily digests', () => {
     expect(adminDigests.find((message) => message.includes('Без правок: 15 (50%)'))).not.toContain('Отклонено: 30 (100%)');
   });
 
-  test('hides calibration before 30 in-window decisions and ignores older decisions', async () => {
+  test('hides calibration before 30 in-window decisions and ignores older or future decisions', async () => {
     const fixture = await createFixture();
     await enableAdminDigest(fixture);
     const now = new Date('2026-07-18T13:00:00.000Z');
@@ -376,6 +376,14 @@ describe('daily digests', () => {
         eventAt: new Date('2026-04-18T12:59:59.000Z'),
         eventType: 'rejected',
         title: 'Old decision',
+        userId: fixture.owner.id,
+        workspaceId: fixture.workspaceId,
+      }),
+      addResolvedSuggestion({
+        chatId: fixture.chatId,
+        eventAt: new Date('2026-07-18T13:00:01.000Z'),
+        eventType: 'rejected',
+        title: 'Future decision',
         userId: fixture.owner.id,
         workspaceId: fixture.workspaceId,
       }),
