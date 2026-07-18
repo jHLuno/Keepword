@@ -3,6 +3,7 @@ import type { CallbackMessenger } from '../../src/telegram/handlers/callback.js'
 import type { PrivateMessenger, PrivateUpdateHandler } from '../../src/telegram/handlers/private.js';
 import type { GroupMessenger, GroupUpdateHandler } from '../../src/telegram/handlers/group.js';
 import type { ClarificationRequest, SuggestionReply } from '../../src/services/analyze-message.js';
+import type { InlineKeyboardMarkup } from '../../src/telegram/messages.js';
 
 export type RecordedOnboardingCard = Readonly<{
   onboardingDeepLink: string;
@@ -14,9 +15,16 @@ export type FakeTelegram = Readonly<{
   callbackAnswers: readonly string[];
   clarificationRequests: readonly ClarificationRequest[];
   handledUpdateIds: readonly number[];
+  groupMessages: readonly string[];
   notificationInvites: readonly RecordedOnboardingCard[];
   onboardingCards: readonly RecordedOnboardingCard[];
   privateMessages: readonly string[];
+  privateSuggestionReplies: readonly Readonly<{
+    replyMarkup: InlineKeyboardMarkup;
+    replyToTelegramMessageId: string;
+    telegramUserId: number;
+    text: string;
+  }>[];
   suggestionReplies: readonly SuggestionReply[];
   telegramAdapterFactory: TelegramAdapterFactory;
 }>;
@@ -30,9 +38,16 @@ export type FakeTelegramOptions = Readonly<{
 export function createFakeTelegram(options: FakeTelegramOptions = {}): FakeTelegram {
   const callbackAnswers: string[] = [];
   const handledUpdateIds: number[] = [];
+  const groupMessages: string[] = [];
   const notificationInvites: RecordedOnboardingCard[] = [];
   const onboardingCards: RecordedOnboardingCard[] = [];
   const privateMessages: string[] = [];
+  const privateSuggestionReplies: Array<{
+    replyMarkup: InlineKeyboardMarkup;
+    replyToTelegramMessageId: string;
+    telegramUserId: number;
+    text: string;
+  }> = [];
   const clarificationRequests: ClarificationRequest[] = [];
   const suggestionReplies: SuggestionReply[] = [];
   let remainingOnboardingCardFailures = options.onboardingCardFailuresBeforeSuccess ?? 0;
@@ -61,7 +76,8 @@ export function createFakeTelegram(options: FakeTelegramOptions = {}): FakeTeleg
       return Promise.resolve();
     },
 
-    sendGroupMessage() {
+    sendGroupMessage({ text }) {
+      groupMessages.push(text);
       return Promise.resolve();
     },
 
@@ -87,8 +103,17 @@ export function createFakeTelegram(options: FakeTelegramOptions = {}): FakeTeleg
       return Promise.resolve(options.currentAdminTelegramUserIds?.includes(telegramUserId) ?? false);
     },
 
-    sendPrivateMessage({ text }) {
+    sendPrivateMessage(input) {
+      const { text } = input;
       privateMessages.push(text);
+      if (input.replyMarkup && input.replyToTelegramMessageId) {
+        privateSuggestionReplies.push({
+          replyMarkup: input.replyMarkup,
+          replyToTelegramMessageId: input.replyToTelegramMessageId,
+          telegramUserId: input.telegramUserId,
+          text,
+        });
+      }
       return Promise.resolve();
     },
   };
@@ -120,9 +145,11 @@ export function createFakeTelegram(options: FakeTelegramOptions = {}): FakeTeleg
     callbackAnswers,
     clarificationRequests,
     handledUpdateIds,
+    groupMessages,
     notificationInvites,
     onboardingCards,
     privateMessages,
+    privateSuggestionReplies,
     suggestionReplies,
     telegramAdapterFactory,
   };

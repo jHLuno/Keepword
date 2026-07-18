@@ -91,7 +91,10 @@ function createGrammYPrivateMessenger(context: Context): PrivateMessenger {
     },
 
     async sendPrivateMessage(input) {
-      await context.api.sendMessage(input.telegramUserId, input.text);
+      await context.api.sendMessage(input.telegramUserId, input.text, {
+        ...(input.replyMarkup ? { reply_markup: input.replyMarkup } : {}),
+        ...(input.replyToTelegramMessageId ? { reply_parameters: { message_id: Number(input.replyToTelegramMessageId) } } : {}),
+      });
     },
   };
 }

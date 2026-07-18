@@ -2,7 +2,7 @@ import { and, eq } from 'drizzle-orm';
 import type { PgQueryResultHKT } from 'drizzle-orm/pg-core';
 import { z } from 'zod';
 
-import { chatMemberships, chats, users } from '../../db/schema.js';
+import { chatMemberships, chats, commitmentSuggestions, users } from '../../db/schema.js';
 import type { Logger } from '../../observability/logger.js';
 import type { RepositoryDatabase } from '../../repositories/database.js';
 import {
@@ -36,7 +36,7 @@ const callbackUpdateSchema = z
       }),
       id: z.string().min(1),
       message: z.object({
-        chat: z.object({ id: z.number().int(), type: z.enum(['group', 'supergroup']) }),
+        chat: z.object({ id: z.number().int(), type: z.enum(['group', 'private', 'supergroup']) }),
       }),
     }),
   })
@@ -56,6 +56,27 @@ export type CommitmentActionCallbackHandler = (
 
 const unavailableText = 'Действие недоступно.';
 const unauthorizedText = 'У вас нет прав на это действие.';
+
+async function resolveSuggestionTelegramChatId<TQueryResult extends PgQueryResultHKT>(
+  database: RepositoryDatabase<TQueryResult>,
+  suggestionId: string,
+): Promise<string> {
+  const scope = (
+    await database
+      .select({ telegramChatId: chats.telegramChatId })
+      .from(commitmentSuggestions)
+      .innerJoin(
+        chats,
+        and(eq(commitmentSuggestions.chatId, chats.id), eq(commitmentSuggestions.workspaceId, chats.workspaceId)),
+      )
+      .where(and(eq(commitmentSuggestions.id, suggestionId), eq(commitmentSuggestions.status, 'pending'), eq(chats.isActive, true)))
+      .limit(1)
+  )[0];
+  if (!scope) {
+    throw new SuggestionActionAuthorizationError('SUGGESTION_UNAVAILABLE');
+  }
+  return String(scope.telegramChatId);
+}
 
 export function createCommitmentActionCallbackHandler<TQueryResult extends PgQueryResultHKT>(input: Readonly<{
   callbackSigningSecret: string;
@@ -125,6 +146,9 @@ export function createCommitmentActionCallbackHandler<TQueryResult extends PgQue
         return;
       }
       if (signedCallback.action === 'edit') {
+        const actionTelegramChatId = callback.message.chat.type === 'private'
+          ? await resolveSuggestionTelegramChatId(input.database, resolvedCallback.suggestionId)
+          : telegramChatId;
         const authorize = createAuthorizeSuggestionAction(
           input.database,
           currentAdminChecker,
@@ -132,7 +156,7 @@ export function createCommitmentActionCallbackHandler<TQueryResult extends PgQue
         await authorize({
           actor: { firstName: callback.from.first_name, telegramUserId },
           suggestionId: resolvedCallback.suggestionId,
-          telegramChatId,
+          telegramChatId: actionTelegramChatId,
         });
         const scopedActor = await input.database
           .select({ userId: chatMemberships.userId })
@@ -145,7 +169,7 @@ export function createCommitmentActionCallbackHandler<TQueryResult extends PgQue
               eq(chatMemberships.workspaceId, chats.workspaceId),
             ),
           )
-          .where(and(eq(users.telegramUserId, telegramUserId), eq(chats.telegramChatId, callback.message.chat.id)))
+          .where(and(eq(users.telegramUserId, telegramUserId), eq(chats.telegramChatId, Number(actionTelegramChatId))))
           .limit(1);
         const actor = scopedActor[0];
         if (!actor) {
@@ -167,6 +191,9 @@ export function createCommitmentActionCallbackHandler<TQueryResult extends PgQue
         throw new CallbackDataError();
       }
 
+      const actionTelegramChatId = callback.message.chat.type === 'private'
+        ? await resolveSuggestionTelegramChatId(input.database, resolvedCallback.suggestionId)
+        : telegramChatId;
       const authorize = createAuthorizeSuggestionAction(
         input.database,
         currentAdminChecker,
@@ -174,7 +201,7 @@ export function createCommitmentActionCallbackHandler<TQueryResult extends PgQue
       await authorize({
         actor: { firstName: callback.from.first_name, telegramUserId },
         suggestionId: resolvedCallback.suggestionId,
-        telegramChatId,
+        telegramChatId: actionTelegramChatId,
       });
       const scopedActors = await input.database
         .select({ userId: chatMemberships.userId })
@@ -187,7 +214,7 @@ export function createCommitmentActionCallbackHandler<TQueryResult extends PgQue
             eq(chatMemberships.workspaceId, chats.workspaceId),
           ),
         )
-        .where(and(eq(users.telegramUserId, telegramUserId), eq(chats.telegramChatId, callback.message.chat.id)))
+        .where(and(eq(users.telegramUserId, telegramUserId), eq(chats.telegramChatId, Number(actionTelegramChatId))))
         .limit(1);
       const scopedActor = scopedActors[0];
       if (!scopedActor) {

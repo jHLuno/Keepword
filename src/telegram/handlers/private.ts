@@ -18,18 +18,28 @@ import {
   CommitmentRescheduleError,
 } from '../../services/commitment-reschedule-sessions.js';
 import { OnboardingError, type OnboardingService } from '../../services/onboarding.js';
+import type { ManualCapture } from '../../services/manual-capture.js';
 import {
   onboardingHelpText,
   onboardingTokenUnavailableText,
   renderOnboardingConnected,
 } from '../messages.js';
+import type { InlineKeyboardMarkup } from '../messages.js';
 import type { TelegramUpdate } from '../bot.js';
+import { createPrivateCommandHandler, parseTelegramCommand } from './commands.js';
 
 const privateMessageSchema = z
   .object({
     message: z.object({
       chat: z.object({ id: z.number().int(), type: z.literal('private') }),
+      date: z.number().int().nonnegative().optional(),
+      forward_from_chat: z.object({ id: z.number().int() }).optional(),
+      forward_origin: z.object({
+        chat: z.object({ id: z.number().int() }).optional(),
+        type: z.string(),
+      }).passthrough().optional(),
       from: z.object({ first_name: z.string().min(1), id: z.number().int(), is_bot: z.boolean() }),
+      message_id: z.number().int().nonnegative(),
       text: z.string().min(1),
     }),
   })
@@ -37,7 +47,12 @@ const privateMessageSchema = z
 
 export type PrivateMessenger = Readonly<{
   isCurrentChatAdmin?: CurrentChatAdminChecker;
-  sendPrivateMessage: (input: Readonly<{ telegramUserId: number; text: string }>) => Promise<void>;
+  sendPrivateMessage: (input: Readonly<{
+    replyMarkup?: InlineKeyboardMarkup;
+    replyToTelegramMessageId?: string;
+    telegramUserId: number;
+    text: string;
+  }>) => Promise<void>;
 }>;
 
 export type PrivateUpdateHandler = (update: TelegramUpdate, messenger: PrivateMessenger) => Promise<void>;
@@ -46,15 +61,18 @@ export function createPrivateUpdateHandler<TQueryResult extends PgQueryResultHKT
   database: RepositoryDatabase<TQueryResult>;
   isCurrentChatAdmin?: CurrentChatAdminChecker;
   logger?: Logger;
+  manualCapture?: ManualCapture;
   onboarding?: OnboardingService;
 }>): PrivateUpdateHandler {
   const editSessions = createSuggestionEditSessionService(input.database);
+  const commands = createPrivateCommandHandler(input.database);
   return async (update, messenger) => {
     const parsed = privateMessageSchema.safeParse(update.payload);
     if (!parsed.success || parsed.data.message.from.is_bot) {
       return;
     }
     const message = parsed.data.message;
+    const command = parseTelegramCommand(message.text);
     const startMatch = /^\/start(?:\s+(.+))?$/i.exec(message.text.trim());
     if (startMatch) {
       const joinMatch = /^join_([A-Za-z0-9_-]+)$/.exec(startMatch[1] ?? '');
@@ -90,6 +108,16 @@ export function createPrivateUpdateHandler<TQueryResult extends PgQueryResultHKT
       }
       return;
     }
+    if (command) {
+      const result = await commands.handle({ command, telegramUserId: message.from.id });
+      if (result.handled) {
+        await messenger.sendPrivateMessage({
+          telegramUserId: message.from.id,
+          text: result.text ?? onboardingHelpText,
+        });
+        return;
+      }
+    }
     const session = await editSessions.findActiveForTelegramUser(message.from.id);
     if (!session) {
       const reschedules = createCommitmentRescheduleService(
@@ -97,6 +125,25 @@ export function createPrivateUpdateHandler<TQueryResult extends PgQueryResultHKT
         input.isCurrentChatAdmin ?? messenger.isCurrentChatAdmin ?? (() => Promise.resolve(false)),
       );
       if (!(await reschedules.hasActive(message.from.id))) {
+        if (input.manualCapture) {
+          const forwardChat = message.forward_origin?.chat ?? message.forward_from_chat;
+          const result = await input.manualCapture.capturePrivateMessage({
+            messenger: { sendPrivateSuggestion: (suggestion) => messenger.sendPrivateMessage(suggestion) },
+            sender: { firstName: message.from.first_name, telegramUserId: message.from.id },
+            sentAt: new Date((message.date ?? Math.floor(Date.now() / 1_000)) * 1_000),
+            ...(forwardChat
+              ? { telegramChatId: String(forwardChat.id) }
+              : {}),
+            telegramMessageId: String(message.message_id),
+            text: message.text,
+          });
+          if (result.status === 'unavailable') {
+            await messenger.sendPrivateMessage({
+              telegramUserId: message.from.id,
+              text: 'Подключите уведомления для одной группы, чтобы сохранить это обязательство.',
+            });
+          }
+        }
         return;
       }
       const dueMatch = /^due:\s*(.+)$/i.exec(message.text.trim());

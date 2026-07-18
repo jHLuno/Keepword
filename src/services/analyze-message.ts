@@ -26,6 +26,7 @@ export type GroupMessageForAnalysis = Readonly<{
   telegramChatId: string;
   telegramMessageId: string;
   text: string;
+  defaultAssigneeTelegramUserId?: number;
 }>;
 
 export type SuggestionReply = Readonly<{
@@ -145,7 +146,7 @@ export function createAnalyzeGroupMessage<TQueryResult extends PgQueryResultHKT>
       return 'clarification-requested';
     }
 
-    const assigneeTelegramUserId = parseTelegramId(candidate.assignee_telegram_user_id);
+    const assigneeTelegramUserId = input.defaultAssigneeTelegramUserId ?? parseTelegramId(candidate.assignee_telegram_user_id);
     if (candidate.confidence !== 'high' || !hasAction(candidate) || assigneeTelegramUserId === null || !hasDueDateOrClarification(candidate)) {
       return 'skipped';
     }

@@ -16,6 +16,7 @@ import {
   onboardingCardText,
   renderNotificationStatus,
 } from '../messages.js';
+import { parseTelegramCommand } from './commands.js';
 
 const groupMemberUpdateSchema = z
   .object({
@@ -48,6 +49,18 @@ const groupMessageUpdateSchema = z
         username: z.string().optional(),
       }),
       message_id: z.number().int().nonnegative(),
+      reply_to_message: z.object({
+        date: z.number().int().nonnegative(),
+        from: z.object({
+          first_name: z.string().min(1),
+          id: z.number().int(),
+          is_bot: z.boolean(),
+          last_name: z.string().optional(),
+          username: z.string().optional(),
+        }),
+        message_id: z.number().int().nonnegative(),
+        text: z.string().min(1),
+      }).optional(),
       text: z.string().min(1),
     }),
   })
@@ -90,8 +103,50 @@ export function createGroupUpdateHandler(input: Readonly<{
     const parsedMessageUpdate = groupMessageUpdateSchema.safeParse(update.payload);
     if (parsedMessageUpdate.success && !parsedMessageUpdate.data.message.from.is_bot) {
       const message = parsedMessageUpdate.data.message;
-      const command = /^\/(invite|notifications)(?:@\w+)?$/i.exec(message.text.trim())?.[1]?.toLowerCase();
-      if (command && input.onboarding) {
+      const command = parseTelegramCommand(message.text);
+      if (command?.name === 'help') {
+        await messenger.sendGroupMessage?.({
+          telegramChatId: String(message.chat.id),
+          text: 'Команды группы: /keep ответом на сообщение, /invite, /notifications. Личные команды: /tasks, /settings, /privacy.',
+        });
+        return;
+      }
+      if (command?.name === 'settings' || command?.name === 'start' || command?.name === 'tasks') {
+        await messenger.sendGroupMessage?.({ telegramChatId: String(message.chat.id), text: 'Эта команда работает в личном чате с Keepword.' });
+        return;
+      }
+      if (command?.name === 'privacy') {
+        await messenger.sendGroupMessage?.({
+          telegramChatId: String(message.chat.id),
+          text: 'Keepword анализирует только новые сообщения после подключения. Для маршрута удаления данных обратитесь к текущему администратору чата.',
+        });
+        return;
+      }
+      if (command?.name === 'keep') {
+        const source = message.reply_to_message;
+        if (!source || source.from.is_bot || !input.analyzeGroupMessage) {
+          await messenger.sendGroupMessage?.({
+            telegramChatId: String(message.chat.id),
+            text: 'Ответьте командой /keep на сообщение с договорённостью.',
+          });
+          return;
+        }
+        await input.analyzeGroupMessage({
+          author: {
+            firstName: source.from.first_name,
+            telegramUserId: source.from.id,
+            ...(source.from.last_name ? { lastName: source.from.last_name } : {}),
+            ...(source.from.username ? { username: source.from.username } : {}),
+          },
+          messenger,
+          sentAt: new Date(source.date * 1_000),
+          telegramChatId: String(message.chat.id),
+          telegramMessageId: String(source.message_id),
+          text: source.text,
+        });
+        return;
+      }
+      if ((command?.name === 'invite' || command?.name === 'notifications') && input.onboarding) {
         const isAdmin = await (messenger.isCurrentChatAdmin ?? (() => Promise.resolve(false)))({
           telegramChatId: String(message.chat.id),
           telegramUserId: message.from.id,
@@ -107,7 +162,7 @@ export function createGroupUpdateHandler(input: Readonly<{
         if (!chat) {
           return;
         }
-        if (command === 'invite') {
+        if (command.name === 'invite') {
           const onboardingDeepLink = await input.onboarding.createOnboardingLink(chat.id);
           await messenger.sendOnboardingCard({
             onboardingDeepLink,

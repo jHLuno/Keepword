@@ -91,6 +91,10 @@ export function renderSuggestion(
   };
 }
 
+export function renderPrivateSuggestionText(suggestionText: string): string {
+  return suggestionText.replace('📌 Keepword заметил договорённость', '📌 Я нашёл обязательство');
+}
+
 export function renderCommitmentActions(
   status: 'blocked' | 'open' | 'overdue',
   callbackNonces: CommitmentCallbackNonces,

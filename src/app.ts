@@ -13,6 +13,7 @@ import { createConnectChat } from './services/connect-chat.js';
 import { createOnboardingInvitationService } from './services/onboarding-invitation.js';
 import { createOnboardingService } from './services/onboarding.js';
 import { createAnalyzeGroupMessage, type AnalyzeGroupMessage } from './services/analyze-message.js';
+import { createManualCapture } from './services/manual-capture.js';
 import { createTelegramBot, type TelegramAdapterFactory } from './telegram/bot.js';
 import { createCommitmentActionCallbackHandler } from './telegram/handlers/callback.js';
 import { createGroupUpdateHandler } from './telegram/handlers/group.js';
@@ -51,11 +52,12 @@ export function buildApp<TQueryResult extends PgQueryResultHKT>(
   const connectChat = createConnectChat(dependencies.database);
   const onboardingInvitations = createOnboardingInvitationService(dependencies.database);
   const onboarding = createOnboardingService(dependencies.database, { botUsername: config.telegramBotUsername });
+  const extractor = createCommitmentExtractor(new OpenAI({ apiKey: config.openAiApiKey }), { logger });
   const analyzeGroupMessage =
     dependencies.analyzeGroupMessage ??
     createAnalyzeGroupMessage(
       dependencies.database,
-      createCommitmentExtractor(new OpenAI({ apiKey: config.openAiApiKey }), { logger }),
+      extractor,
       undefined,
       config.callbackSigningSecret,
       logger,
@@ -76,6 +78,7 @@ export function buildApp<TQueryResult extends PgQueryResultHKT>(
   const privateUpdateHandler = createPrivateUpdateHandler({
     database: dependencies.database,
     logger,
+    manualCapture: createManualCapture(dependencies.database, extractor, config.callbackSigningSecret, logger),
     onboarding,
   });
   const telegram = dependencies.telegramAdapterFactory
