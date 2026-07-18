@@ -4,7 +4,7 @@ export type AppConfig = Readonly<{
   telegramBotUsername: string;
   telegramWebhookSecret: string;
   databaseUrl: string;
-  openAiApiKey: string;
+  openRouterApiKey: string;
   port: number;
   workerSecret: string;
 }>;
@@ -15,7 +15,7 @@ const requiredEnvironmentVariables = [
   'TELEGRAM_BOT_USERNAME',
   'TELEGRAM_WEBHOOK_SECRET',
   'DATABASE_URL',
-  'OPENAI_API_KEY',
+  'OPENROUTER_API_KEY',
   'WORKER_SECRET',
 ] as const;
 
@@ -32,7 +32,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
     telegramBotUsername: env.TELEGRAM_BOT_USERNAME!,
     telegramWebhookSecret: env.TELEGRAM_WEBHOOK_SECRET!,
     databaseUrl: env.DATABASE_URL!,
-    openAiApiKey: env.OPENAI_API_KEY!,
+    openRouterApiKey: env.OPENROUTER_API_KEY!,
     port: Number(env.PORT ?? 3000),
     workerSecret: env.WORKER_SECRET!,
   };

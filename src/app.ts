@@ -55,7 +55,10 @@ export function buildApp<TQueryResult extends PgQueryResultHKT>(
   const connectChat = createConnectChat(dependencies.database);
   const onboardingInvitations = createOnboardingInvitationService(dependencies.database);
   const onboarding = createOnboardingService(dependencies.database, { botUsername: config.telegramBotUsername });
-  const extractor = createCommitmentExtractor(new OpenAI({ apiKey: config.openAiApiKey }), { logger });
+  const extractor = createCommitmentExtractor(
+    new OpenAI({ apiKey: config.openRouterApiKey, baseURL: 'https://openrouter.ai/api/v1' }),
+    { logger },
+  );
   const analyzeGroupMessage =
     dependencies.analyzeGroupMessage ??
     createAnalyzeGroupMessage(

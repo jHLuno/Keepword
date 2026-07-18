@@ -1,5 +1,5 @@
-import type OpenAI from 'openai';
-import { zodTextFormat } from 'openai/helpers/zod';
+import { zodResponseFormat } from 'openai/helpers/zod';
+import type { ChatCompletionCreateParamsNonStreaming } from 'openai/resources/chat/completions/completions.js';
 
 import { selectBoundedChatContext } from './context.js';
 import { AppError } from '../domain/errors.js';
@@ -11,7 +11,7 @@ import {
 } from '../domain/extraction.js';
 import type { Logger } from '../observability/logger.js';
 
-const defaultModel = 'gpt-4o-mini';
+const defaultModel = 'google/gemini-2.5-flash-lite';
 
 const extractionInstruction = [
   'Extract one possible team-work commitment from the supplied Telegram messages.',
@@ -25,12 +25,14 @@ const extractionInstruction = [
 ].join(' ');
 
 type ParsedResponse = Readonly<{
-  output_parsed: unknown;
+  choices: readonly Readonly<{ message: Readonly<{ content: string | null }> }> [];
 }>;
 
-export type OpenAiExtractionClient = Readonly<{
-  responses: Readonly<{
-    parse: (request: Parameters<OpenAI['responses']['parse']>[0]) => Promise<ParsedResponse>;
+export type OpenRouterExtractionClient = Readonly<{
+  chat: Readonly<{
+    completions: Readonly<{
+      create: (request: ChatCompletionCreateParamsNonStreaming) => Promise<ParsedResponse>;
+    }>;
   }>;
 }>;
 
@@ -51,10 +53,10 @@ function formatMessage(message: ExtractionMessage): Record<string, string> {
 function createExtractionRequest(
   input: ExtractionInput,
   context: readonly ExtractionMessage[],
-): Parameters<OpenAI['responses']['parse']>[0] {
+): ChatCompletionCreateParamsNonStreaming {
   return {
     model: defaultModel,
-    input: [
+    messages: [
       { role: 'system', content: extractionInstruction },
       {
         role: 'user',
@@ -64,9 +66,7 @@ function createExtractionRequest(
         }),
       },
     ],
-    text: {
-      format: zodTextFormat(candidateSchema, 'commitment_candidate'),
-    },
+    response_format: zodResponseFormat(candidateSchema, 'commitment_candidate'),
   };
 }
 
@@ -84,7 +84,7 @@ function hasOnlySelectedSourceMessageIds(
 }
 
 export function createCommitmentExtractor(
-  openAi: OpenAiExtractionClient,
+  openRouter: OpenRouterExtractionClient,
   options: ExtractorOptions = {},
 ): CommitmentExtractor {
   return {
@@ -103,15 +103,16 @@ export function createCommitmentExtractor(
       });
 
       try {
-        const response = await openAi.responses.parse(request);
-        const parsedCandidate = candidateSchema.safeParse(response.output_parsed);
+        const response = await openRouter.chat.completions.create(request);
+        const content = response.choices[0]?.message.content;
+        const parsedCandidate = candidateSchema.safeParse(content ? JSON.parse(content) : null);
 
         if (!parsedCandidate.success) {
-          throw new AppError('EXTRACTION_FAILED', 'OpenAI returned an invalid commitment candidate');
+          throw new AppError('EXTRACTION_FAILED', 'OpenRouter returned an invalid commitment candidate');
         }
 
         if (!hasOnlySelectedSourceMessageIds(parsedCandidate.data, context)) {
-          throw new AppError('EXTRACTION_FAILED', 'OpenAI returned an unknown commitment source message ID');
+          throw new AppError('EXTRACTION_FAILED', 'OpenRouter returned an unknown commitment source message ID');
         }
 
         options.logger?.info('llm_commitment_extraction_completed', {

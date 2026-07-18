@@ -610,7 +610,7 @@ Chat ID
 - TypeScript
 - PostgreSQL
 - Prisma или Drizzle ORM
-- OpenAI GPT-5.6 для извлечения обязательств
+- OpenRouter с `google/gemini-2.5-flash-lite` для извлечения обязательств
 - Railway для backend, PostgreSQL и scheduled jobs
 - Webhook для получения Telegram updates
 - Cron jobs для напоминаний и daily digest

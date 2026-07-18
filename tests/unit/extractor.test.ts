@@ -53,15 +53,17 @@ test('extracts a Zod-validated candidate from bounded same-chat context', async 
 
   await expect(extractor.extractCandidate(input)).resolves.toEqual(validCandidate);
 
-  expect(openAi.responses.parse).toHaveBeenCalledOnce();
-  const request = openAi.responses.parse.mock.calls[0]?.[0] as {
-    input: Array<{ content: string; role: string }>;
+  expect(openAi.chat.completions.create).toHaveBeenCalledOnce();
+  const request = openAi.chat.completions.create.mock.calls[0]?.[0] as {
+    messages: Array<{ content: string; role: string }>;
+    model: string;
   };
 
-  expect(request.input).toHaveLength(2);
-  expect(request.input[1]?.content).toContain('message-1');
-  expect(request.input[1]?.content).toContain('message-2');
-  expect(request.input[1]?.content).not.toContain('other-chat-message');
+  expect(request.model).toBe('google/gemini-2.5-flash-lite');
+  expect(request.messages).toHaveLength(2);
+  expect(request.messages[1]?.content).toContain('message-1');
+  expect(request.messages[1]?.content).toContain('message-2');
+  expect(request.messages[1]?.content).not.toContain('other-chat-message');
 });
 
 test('rejects an invalid AI response instead of inventing a candidate', async () => {

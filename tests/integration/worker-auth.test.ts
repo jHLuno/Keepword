@@ -11,7 +11,7 @@ function buildWorkerApp(runJobs?: () => Promise<void>) {
   const config = {
     callbackSigningSecret: 'callback-test-secret',
     databaseUrl: 'postgres://unused/test',
-    openAiApiKey: 'unused',
+    openRouterApiKey: 'unused',
     port: 3_000,
     telegramBotToken: 'unused',
     telegramBotUsername: 'keepword_test_bot',

@@ -86,7 +86,7 @@ test('supports the complete approved MVP without leaking private task state', as
     {
       callbackSigningSecret,
       databaseUrl: 'postgres://unused/mvp-flow',
-      openAiApiKey: 'unused',
+      openRouterApiKey: 'unused',
       port: 3_000,
       telegramBotToken: 'unused',
       telegramBotUsername: 'keepword_test_bot',

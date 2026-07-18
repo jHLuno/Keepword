@@ -13,7 +13,7 @@ Use this checklist for each Railway release. Run it with a production operator; 
   ```
 
 - [ ] Confirm the database URL points to the intended environment before applying migrations.
-- [ ] Set these Railway variables in both services: `CALLBACK_SIGNING_SECRET`, `DATABASE_URL`, `OPENAI_API_KEY`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`, `TELEGRAM_WEBHOOK_SECRET`, and `WORKER_SECRET`.
+- [ ] Set these Railway variables in both services: `CALLBACK_SIGNING_SECRET`, `DATABASE_URL`, `OPENROUTER_API_KEY`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`, `TELEGRAM_WEBHOOK_SECRET`, and `WORKER_SECRET`.
 - [ ] Let Railway provide `PORT` to the web service. Never commit or log any of the values above.
 
 ## Railway services

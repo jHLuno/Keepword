@@ -1,3 +1,16 @@
+## 2026-07-19 — OpenRouter Gemini extraction
+
+### Changed
+- Replaced direct OpenAI extraction with OpenRouter Chat Completions using `google/gemini-2.5-flash-lite`.
+- Replaced `OPENAI_API_KEY` with `OPENROUTER_API_KEY` in runtime and Railway documentation.
+
+### Verified
+- `pnpm vitest run tests/unit/config.test.ts tests/unit/extractor.test.ts`
+- `pnpm typecheck`
+
+### Notes
+- Existing Zod validation and message-source provenance checks remain server-side.
+
 ## 2026-07-18 — MVP release readiness
 
 ### Added

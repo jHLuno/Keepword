@@ -1,3 +1,17 @@
+## 2026-07-19 — Handoff
+
+### Done
+- Configured extraction for OpenRouter `google/gemini-2.5-flash-lite`.
+
+### Not done
+- Railway variables and deployment must be updated with `OPENROUTER_API_KEY`.
+
+### Risks / blockers
+- Confirm OpenRouter account billing and structured-output support before production traffic.
+
+### Next recommended step
+- Set `OPENROUTER_API_KEY` in both Railway services, redeploy, then run the staging extraction smoke test.
+
 ## 2026-07-18 — Handoff
 
 ### Done
