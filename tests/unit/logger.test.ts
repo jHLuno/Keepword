@@ -78,3 +78,11 @@ test('uses a safe source module name for an otherwise unknown error', () => {
     'TELEGRAM_UPDATE_DISPATCH_FAILED_AT_CREATE_CONNECT_CHAT',
   );
 });
+
+test('uses a safe code from a grammY-style wrapped error', () => {
+  const error = { error: Object.assign(new Error('relation missing'), { code: '42P01' }) };
+
+  expect(safeErrorCode(error, 'TELEGRAM_UPDATE_DISPATCH_FAILED')).toBe(
+    'TELEGRAM_UPDATE_DISPATCH_FAILED_42P01',
+  );
+});

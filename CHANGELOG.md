@@ -1,5 +1,13 @@
 [Earlier entries](docs/archive/CHANGELOG-pre-S04.md)
 
+## 2026-07-19 — grammY error unwrapping
+
+### Fixed
+- Production error diagnostics now inspect grammY's wrapped `error` and `cause` values while preserving safe log redaction.
+
+### Verified
+- `pnpm lint && pnpm typecheck && pnpm test && pnpm build` — 26 test files and 121 tests passed.
+
 ## 2026-07-19 — Source-frame diagnostics
 
 ### Fixed

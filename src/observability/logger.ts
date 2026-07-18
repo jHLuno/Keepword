@@ -23,10 +23,14 @@ const safeInternalErrorCodes = new Map<string, string>([
   ['Could not issue reminder callbacks', 'REMINDER_CALLBACKS_INCOMPLETE'],
 ]);
 
-export function safeErrorCode(error: unknown, fallback: string): string {
+function safeErrorCodeInner(error: unknown, fallback: string, seen: Set<object>): string {
   if (typeof error !== 'object' || error === null) {
     return fallback;
   }
+  if (seen.has(error)) {
+    return fallback;
+  }
+  seen.add(error);
   const candidate = error as Record<string, unknown>;
   if ('code' in candidate) {
     const code = candidate.code;
@@ -60,7 +64,20 @@ export function safeErrorCode(error: unknown, fallback: string): string {
       return `${fallback}_AT_${sourceFunction.replace(/([a-z])([A-Z])/g, '$1_$2').toUpperCase()}`;
     }
   }
+  for (const property of ['error', 'cause'] as const) {
+    if (!(property in candidate)) {
+      continue;
+    }
+    const nestedCode = safeErrorCodeInner(candidate[property], fallback, seen);
+    if (nestedCode !== fallback) {
+      return nestedCode;
+    }
+  }
   return fallback;
+}
+
+export function safeErrorCode(error: unknown, fallback: string): string {
+  return safeErrorCodeInner(error, fallback, new Set());
 }
 
 export function serializeLog(event: string, metadata: LogMetadata, level: 'error' | 'info' = 'info'): string {
