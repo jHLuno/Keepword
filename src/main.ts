@@ -9,12 +9,13 @@ async function start(): Promise<void> {
   const app = buildApp(config);
 
   await app.listen({ host: '0.0.0.0', port: config.port });
-  logger.info('http_server_started', { port: config.port });
+  logger.info('http_server_started', { result: 'success' });
 }
 
 void start().catch((error: unknown) => {
   logger.error('http_server_start_failed', {
-    error_name: error instanceof Error ? error.name : 'UnknownError',
+    errorCode: error instanceof Error ? 'HTTP_SERVER_START_FAILED' : 'UNKNOWN_STARTUP_ERROR',
+    result: 'failure',
   });
   process.exitCode = 1;
 });

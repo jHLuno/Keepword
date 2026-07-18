@@ -16,5 +16,5 @@ Keepword turns team promises in Telegram chats into confirmed commitments.
 - `pnpm typecheck` — run the strict TypeScript compiler without emitting files.
 - `pnpm test` — run the test suite.
 - `pnpm build` — compile TypeScript into `dist/`.
-- `pnpm db:generate` — generate the database client once the schema is added.
+- `pnpm db:generate` — generate Drizzle migrations once the schema is added.
 - `pnpm db:migrate` — apply database migrations once they are added.

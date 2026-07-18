@@ -12,7 +12,8 @@ try {
   startWorker();
 } catch (error: unknown) {
   logger.error('worker_start_failed', {
-    error_name: error instanceof Error ? error.name : 'UnknownError',
+    errorCode: error instanceof Error ? 'WORKER_START_FAILED' : 'UNKNOWN_STARTUP_ERROR',
+    result: 'failure',
   });
   process.exitCode = 1;
 }
