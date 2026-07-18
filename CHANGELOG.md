@@ -1,5 +1,15 @@
 [Earlier entries](docs/archive/CHANGELOG-pre-S04.md)
 
+## 2026-07-19 — Private /check onboarding scope
+
+### Fixed
+- `/check` now returns commitments only from chats where the requesting user completed notification onboarding, while retaining the personal-chat guard.
+- Users without completed onboarding receive the existing connection guidance instead of an empty summary.
+
+### Verified
+- `pnpm vitest run tests/integration/commands.test.ts` — 10 tests passed after two expected RED failures.
+- `pnpm lint && pnpm typecheck && pnpm test && pnpm build` — 27 test files and 125 tests passed.
+
 ## 2026-07-19 — grammY error unwrapping
 
 ### Fixed

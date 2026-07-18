@@ -103,6 +103,22 @@ export function createPrivateCommandHandler<TQueryResult extends PgQueryResultHK
       .orderBy(asc(chats.createdAt));
   }
 
+  async function hasCompletedNotificationOnboarding(telegramUserId: number): Promise<boolean> {
+    const membership = await database
+      .select({ id: chatMemberships.id })
+      .from(chatMemberships)
+      .innerJoin(users, eq(chatMemberships.userId, users.id))
+      .innerJoin(chats, and(eq(chatMemberships.chatId, chats.id), eq(chatMemberships.workspaceId, chats.workspaceId)))
+      .where(and(
+        eq(users.telegramUserId, telegramUserId),
+        isNotNull(users.privateChatStartedAt),
+        isNotNull(chatMemberships.notificationsConnectedAt),
+        eq(chats.isActive, true),
+      ))
+      .limit(1);
+    return membership.length > 0;
+  }
+
   return {
     async handle(input) {
       if (input.command.name === 'help') {
@@ -121,6 +137,9 @@ export function createPrivateCommandHandler<TQueryResult extends PgQueryResultHK
         };
       }
       if (input.command.name === 'check') {
+        if (!await hasCompletedNotificationOnboarding(input.telegramUserId)) {
+          return { handled: true, text: 'Сначала подключите уведомления через ссылку из нужной группы.' };
+        }
         const rows = await database
           .select({
             chatTitle: chats.title,
@@ -131,10 +150,16 @@ export function createPrivateCommandHandler<TQueryResult extends PgQueryResultHK
           .from(commitments)
           .innerJoin(users, eq(commitments.assigneeUserId, users.id))
           .innerJoin(chats, and(eq(commitments.chatId, chats.id), eq(commitments.workspaceId, chats.workspaceId)))
+          .innerJoin(chatMemberships, and(
+            eq(chatMemberships.chatId, commitments.chatId),
+            eq(chatMemberships.workspaceId, commitments.workspaceId),
+            eq(chatMemberships.userId, commitments.assigneeUserId),
+          ))
           .where(
             and(
               eq(users.telegramUserId, input.telegramUserId),
               isNotNull(users.privateChatStartedAt),
+              isNotNull(chatMemberships.notificationsConnectedAt),
               eq(chats.isActive, true),
               inArray(commitments.status, ['open', 'overdue', 'blocked']),
             ),
