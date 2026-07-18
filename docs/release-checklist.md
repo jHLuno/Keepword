@@ -1,4 +1,4 @@
-# Keepword MVP release checklist
+# Keepword release checklist
 
 Use this checklist for each Railway release. Run it with a production operator; do not paste secrets into this file, terminal history, or chat.
 
@@ -6,13 +6,14 @@ Use this checklist for each Railway release. Run it with a production operator; 
 
 - [ ] Confirm the release commit passed `pnpm lint`, `pnpm typecheck`, `pnpm test`, and `pnpm build`.
 - [ ] Take and verify a recoverable PostgreSQL backup. Record its timestamp and restore procedure in the deployment record.
-- [ ] Review the migration set and apply it once against the target database:
+- [ ] Review the migration set. This release includes `0009_check_page_callback_tokens`, `0010_suggestion_events`, and `0011_preserve_suggestion_event_history`; all are forward-only.
+- [ ] Apply migrations once, first to **staging**, after confirming in Railway that `DATABASE_URL` belongs to staging (never paste it into terminal history or chat):
 
   ```bash
   pnpm db:migrate
   ```
 
-- [ ] Confirm the database URL points to the intended environment before applying migrations.
+- [ ] Confirm the migration completed before deploying the staging web and worker image. Do not run it from both services or on every container start.
 - [ ] Set these Railway variables in both services: `CALLBACK_SIGNING_SECRET`, `DATABASE_URL`, `OPENROUTER_API_KEY`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`, `TELEGRAM_WEBHOOK_SECRET`, and `WORKER_SECRET`.
 - [ ] Let Railway provide `PORT` to the web service. Never commit or log any of the values above.
 
@@ -44,12 +45,16 @@ Use this checklist for each Railway release. Run it with a production operator; 
 - [ ] Send a real staging Telegram update and confirm `telegram_update_received` is logged without message text or secrets.
 - [ ] Create and confirm a staging commitment for an onboarded user; verify one private reminder or digest is delivered per idempotency key despite a repeated worker run.
 - [ ] Confirm an overdue state appears only in the assignee's private message and is never published to the group.
-- [ ] Exercise `/privacy delete` as the current chat administrator and verify the group no longer produces Keepword writes.
+- [ ] Create at least six active commitments for one onboarded user across two staging chats. Run `/check`; verify source-chat labels, no more than five items on a page, next/previous navigation, and that `Готово`, `Перенести срок`, and `Есть блокер` alter only that user's intended commitment.
+- [ ] Try a copied or stale `/check` callback from a different Telegram account and then a second time from the original account. Verify both are rejected and no commitment changes.
+- [ ] In chat A create at least 30 resolved suggestion decisions in the last 90 days. Keep chat B below the threshold. Verify the current admin of A receives only A's calibration; a non-admin, a former admin, personal digest, and group messages receive none.
+- [ ] Create at least three eligible exact-deadline commitments for one person in chat A and separate commitments in chat B. Verify chat A's private admin digest contains only A's reliability row and `/check` contains only the caller's own cross-chat summary.
+- [ ] Exercise `/privacy delete` as the current chat administrator in chat A. Verify chat A becomes inactive; its source messages, suggestions, `suggestion_events`, commitments, onboarding tokens, and deliveries are removed; chat B remains intact; and chat A no longer produces Keepword writes.
 
 ## Monitoring and rollback
 
 - [ ] Watch web and worker logs during the first job interval for `worker_started`, `reminder_sent`, `daily_digest_sent`, and delivery-failure events; investigate failures without logging private message content.
 - [ ] Confirm webhook errors, authorization denials, and job delivery failures have alerting or an operator review path.
 - [ ] If a release must be rolled back, first stop the new worker to avoid overlapping deliveries, then redeploy the previous known-good image to both services.
-- [ ] Do not roll back a database migration by deleting data. Restore from the verified backup or use an explicitly reviewed forward migration.
+- [ ] Do not roll back a database migration by deleting data. The new tables and callback-token columns are additive; restore from the verified backup only when necessary, otherwise use an explicitly reviewed forward migration.
 - [ ] Re-run the health check, `getWebhookInfo`, and the staging smoke test after rollback or recovery.

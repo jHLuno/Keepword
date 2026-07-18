@@ -1,4 +1,21 @@
-[Earlier entries](docs/archive/CHANGELOG-pre-S04.md) · [2026-07-19 archive](docs/archive/CHANGELOG-2026-07-19-pre-filter.md) · [Trust Memory archive](docs/archive/CHANGELOG-2026-07-19-pre-trust-memory.md) · [Pre-calibration archive](docs/archive/CHANGELOG-2026-07-19-pre-calibration.md)
+[Earlier entries](docs/archive/CHANGELOG-pre-S04.md) · [2026-07-19 archive](docs/archive/CHANGELOG-2026-07-19-pre-filter.md) · [Trust Memory archive](docs/archive/CHANGELOG-2026-07-19-pre-trust-memory.md) · [Pre-calibration archive](docs/archive/CHANGELOG-2026-07-19-pre-calibration.md) · [Trust Memory implementation archive](docs/archive/CHANGELOG-2026-07-19-trust-memory-implementation.md)
+
+## 2026-07-19 — Trust Memory release verification
+
+### Changed
+- Updated `PROJECT.md` to describe the implemented action-first private `/check`, immutable suggestion decision history, observation-only chat calibration, and scoped reliability metrics.
+- Expanded the Railway release checklist with the three migrations in this release, forward-only rollback guidance, and staging checks for callback ownership, current-admin isolation, and privacy deletion cascade.
+
+### Verified
+- `pnpm install --frozen-lockfile` — passed.
+- `pnpm typecheck` — passed.
+- `pnpm test` — passed: 28 files, 147 tests. The integration suite applies the complete local Drizzle migration folder to PGlite.
+- `pnpm build` — passed.
+- `pnpm audit --prod --audit-level=moderate` — passed: no known vulnerabilities.
+- Repository-wide `pnpm lint` fails only because pre-existing, untracked `landing/dist/assets/index-CFentx7P.js` is outside the TypeScript project. `git ls-files -z -- '*.ts' '*.mts' '*.cts' | xargs -0 pnpm exec eslint` — passed for all tracked TypeScript files.
+
+### Notes
+- No discoverable staging database configuration or Railway authority was available locally, so `pnpm db:migrate` was not run against any external database and Telegram/Railway smoke tests were not claimed as complete. The required operator steps are in `docs/release-checklist.md`.
 
 ## 2026-07-19 — Chat-scoped reliability memory
 
@@ -16,40 +33,3 @@
 
 ### Notes
 - Railway/staging migration and live Telegram smoke verification remain task 5; this feature needs no schema migration.
-
-## 2026-07-19 — Private chat-scoped calibration digest
-
-### Added
-- Added a 90-day calibration aggregate derived only from immutable `suggestion_events` for the exact active workspace/chat pair.
-- After 30 resolved decisions, the private digest for a current admin shows confirmed-without-edits, confirmed-after-edits, and rejected counts with percentages.
-
-### Changed
-- The worker now verifies current Telegram administrator status before sending any admin digest, preventing a former admin with a stale database role from receiving group data.
-- Personal digests and all group messages remain free of calibration data.
-
-### Verified
-- Focused digest, mode, and MVP suites: 15 tests passed.
-- `pnpm typecheck`, `pnpm test` (28 files, 144 tests), and `pnpm build` passed.
-- Targeted ESLint for changed source/tests and `git diff --check` passed.
-
-### Notes
-- Repository-wide `pnpm lint` remains blocked by the pre-existing untracked `landing/dist/assets/index-Cs9s6c9w.js` output, which was not changed.
-
-## 2026-07-19 — Immutable suggestion memory
-
-### Added
-- Added append-only `suggestion_events` memory for `suggested`, `edited`, `confirmed`, and `rejected` decisions, each scoped to its workspace and chat with an actor and immutable JSON snapshot.
-- Added migration `0010_suggestion_events` with scoped foreign keys and indexes.
-
-### Changed
-- Suggestion creation, editing, confirmation, and rejection now write their event in the same database transaction as the state change.
-- Chat privacy deletion explicitly removes suggestion events before deleting suggestion data.
-- Decision events retain the actor ID after that actor leaves a chat; deleting the source chat still removes its events.
-
-### Fixed
-- Added a forward-only migration that removes the actor-membership cascade from `suggestion_events`, preserving immutable decision memory after a membership is deleted.
-- Added an integration assertion that the database rejects a suggestion event whose workspace/chat scope differs from its suggestion.
-
-### Verified
-- `pnpm vitest run tests/integration/suggestion-events.test.ts tests/integration/privacy.test.ts`, `pnpm typecheck`, targeted ESLint, `pnpm test` (28 files, 140 tests), and `pnpm build` passed locally.
-- Repository-wide `pnpm lint` remains blocked by the pre-existing untracked `landing/dist` output, which is intentionally not part of this change.

@@ -1,0 +1,38 @@
+# 2026-07-19 — Trust Memory implementation archive
+
+Moved from the root handoff after the release-verification entry so the active context keeps only the two latest sessions.
+
+## 2026-07-19 — Handoff
+
+### Done
+- Added a private calibration section to the admin digest after 30 resolved decisions within a rolling 90-day window.
+- Calibration derives only from immutable `suggestion_events` scoped by both `workspace_id` and `chat_id`; it never reads message snapshots.
+- Confirmed-without-edits, confirmed-after-edits, and rejected signals are isolated per source group.
+- The digest worker checks current Telegram admin access before sending admin data; personal and group messages cannot include calibration.
+
+### Not done
+- Reliability aggregates and the cross-chat reliability section in `/check` remain task 4.
+- Railway/staging migration and smoke tests remain task 5; no production database was changed.
+
+### Risks / blockers
+- Repository-wide `pnpm lint` was blocked by pre-existing, untracked `landing/dist` generated output. Changed files passed targeted ESLint.
+
+### Next recommended step
+- Implement task 4: privacy-safe reliability aggregates for each source chat and the user’s own cross-chat `/check` summary.
+
+## 2026-07-19 — Handoff
+
+### Done
+- Added migration `0010_suggestion_events` and append-only, chat/workspace-scoped suggestion-decision memory.
+- Creation, edit, confirmation, rejection, and chat privacy deletion have integration coverage, including a confirm/reject race.
+- Added forward migration `0011_preserve_suggestion_event_history`: a former actor's event remains immutable after membership deletion, while source-chat deletion still removes its event history.
+- Added database-level integration coverage for rejecting cross-chat suggestion event inserts.
+
+### Not done
+- Calibration and reliability aggregates are not implemented yet; they will derive only from this scoped event history in later plan tasks.
+
+### Risks / blockers
+- Railway/staging migration and smoke test remain a release-verification task; no production database was touched locally.
+
+### Next recommended step
+- Implement task 3: a private, chat-scoped admin calibration section with 30 resolved suggestions in 90 days as the minimum threshold.
