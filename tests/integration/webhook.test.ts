@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 
 import { buildApp } from '../../src/app.js';
 import { chatMemberships, chats, onboardingTokens, workspaces } from '../../src/db/schema.js';
-import { createFakeTelegram } from '../helpers/fake-telegram.js';
+import { createFakeTelegram, type FakeTelegramOptions } from '../helpers/fake-telegram.js';
 import { createPgliteTestDatabase, type PgliteTestDatabase } from '../helpers/pglite.js';
 
 let database: PgliteTestDatabase;
@@ -43,8 +43,8 @@ const botAddedToGroupUpdate = {
   },
 } as const;
 
-function buildWebhookApp() {
-  const fakeTelegram = createFakeTelegram();
+function buildWebhookApp(options?: FakeTelegramOptions) {
+  const fakeTelegram = createFakeTelegram(options);
   const app = buildApp(
     {
       databaseUrl: 'postgres://unused/test',
@@ -117,6 +117,28 @@ describe('Telegram webhook', () => {
       /^https:\/\/t\.me\/keepword_test_bot\?start=join_[A-Za-z0-9_-]+$/,
     );
     expect(card?.onboardingDeepLink).not.toContain(String(botAddedToGroupUpdate.my_chat_member.chat.id));
+
+    await app.close();
+  });
+
+  test('retries a failed dispatch and suppresses only the later duplicate', async () => {
+    const { app, fakeTelegram } = buildWebhookApp({ failuresBeforeSuccess: 1 });
+    const retryUpdate = { ...botAddedToGroupUpdate, update_id: 2_002 };
+    const request = {
+      headers: { 'x-telegram-bot-api-secret-token': webhookSecret },
+      method: 'POST' as const,
+      payload: retryUpdate,
+      url: '/telegram/webhook',
+    };
+
+    expect((await app.inject(request)).statusCode).toBe(500);
+    expect(fakeTelegram.handledUpdateIds).toEqual([retryUpdate.update_id]);
+
+    expect((await app.inject(request)).statusCode).toBe(200);
+    expect(fakeTelegram.handledUpdateIds).toEqual([retryUpdate.update_id, retryUpdate.update_id]);
+
+    expect((await app.inject(request)).statusCode).toBe(200);
+    expect(fakeTelegram.handledUpdateIds).toEqual([retryUpdate.update_id, retryUpdate.update_id]);
 
     await app.close();
   });

@@ -13,9 +13,14 @@ export type FakeTelegram = Readonly<{
   telegramAdapterFactory: TelegramAdapterFactory;
 }>;
 
-export function createFakeTelegram(): FakeTelegram {
+export type FakeTelegramOptions = Readonly<{
+  failuresBeforeSuccess?: number;
+}>;
+
+export function createFakeTelegram(options: FakeTelegramOptions = {}): FakeTelegram {
   const handledUpdateIds: number[] = [];
   const onboardingCards: RecordedOnboardingCard[] = [];
+  let remainingFailures = options.failuresBeforeSuccess ?? 0;
 
   const messenger: GroupMessenger = {
     sendOnboardingCard(card) {
@@ -27,6 +32,10 @@ export function createFakeTelegram(): FakeTelegram {
   const telegramAdapterFactory: TelegramAdapterFactory = (groupUpdateHandler: GroupUpdateHandler): TelegramAdapter => ({
     async handleUpdate(update: TelegramUpdate) {
       handledUpdateIds.push(update.updateId);
+      if (remainingFailures > 0) {
+        remainingFailures -= 1;
+        throw new Error('Fake Telegram adapter failed');
+      }
       await groupUpdateHandler(update, messenger);
     },
   });

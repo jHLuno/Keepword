@@ -84,7 +84,17 @@ export function buildApp<TQueryResult extends PgQueryResultHKT>(
       return reply.code(200).send();
     }
 
-    await telegram.handleUpdate({ payload: request.body, updateId });
+    try {
+      await telegram.handleUpdate({ payload: request.body, updateId });
+    } catch (error: unknown) {
+      await updates.releaseUpdate(updateId);
+      logger.error('telegram_update_dispatch_failed', {
+        errorCode: error instanceof Error ? 'TELEGRAM_UPDATE_DISPATCH_FAILED' : 'UNKNOWN_TELEGRAM_DISPATCH_FAILURE',
+        requestId: request.id,
+        result: 'failure',
+      });
+      throw error;
+    }
     logger.info('telegram_update_received', {
       requestId: request.id,
       result: 'processed',
