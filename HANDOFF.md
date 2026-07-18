@@ -3,6 +3,14 @@
 ## 2026-07-19 — Handoff
 
 ### Done
+- Fixed Railway's `ERR_PNPM_LOCKFILE_CONFIG_MISMATCH`: Docker now copies `pnpm-workspace.yaml` before each frozen install.
+
+### Next recommended step
+- Confirm the Railway build completes for commit `0c9b9ee` or the newer fix commit, then run the group-message smoke test.
+
+## 2026-07-19 — Handoff
+
+### Done
 - Restored selective local AI prefiltering, including Russian and English action, assignment, obligation, and deadline patterns.
 - Rejected messages do not reach OpenRouter and emit only safe identifier-based logs.
 - Resolved the production dependency audit by updating Drizzle packages and applying a scoped esbuild override.
