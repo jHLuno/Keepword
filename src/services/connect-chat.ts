@@ -1,9 +1,7 @@
-import { createHash, randomBytes } from 'node:crypto';
-
 import { eq } from 'drizzle-orm';
 import type { PgQueryResultHKT } from 'drizzle-orm/pg-core';
 
-import { chatMemberships, chats, onboardingTokens, users, workspaces } from '../db/schema.js';
+import { chatMemberships, chats, users, workspaces } from '../db/schema.js';
 import type { RepositoryDatabase } from '../repositories/database.js';
 
 export type ConnectChatInput = Readonly<{
@@ -15,16 +13,12 @@ export type ConnectChatInput = Readonly<{
 
 export type ConnectedChat = Readonly<{
   chatId: string;
-  isNew: boolean;
-  onboardingToken: string;
   telegramChatId: string;
   title: string;
   workspaceId: string;
 }>;
 
 export type ConnectChat = (input: ConnectChatInput) => Promise<ConnectedChat>;
-
-const onboardingTokenLifetimeMs = 24 * 60 * 60 * 1_000;
 
 function firstRow<Row>(rows: readonly Row[]): Row {
   const row = rows[0];
@@ -36,17 +30,12 @@ function firstRow<Row>(rows: readonly Row[]): Row {
   return row;
 }
 
-function hashOnboardingToken(token: string): string {
-  return createHash('sha256').update(token).digest('hex');
-}
-
 export function createConnectChat<TQueryResult extends PgQueryResultHKT>(
   database: RepositoryDatabase<TQueryResult>,
 ): ConnectChat {
   return async (input) => {
     const telegramChatId = Number(input.telegramChatId);
     const adminTelegramUserId = Number(input.adminTelegramUserId);
-    const onboardingToken = randomBytes(32).toString('base64url');
 
     return database.transaction(async (transaction) => {
       const existingChats = await transaction
@@ -57,17 +46,8 @@ export function createConnectChat<TQueryResult extends PgQueryResultHKT>(
       const existingChat = existingChats[0];
 
       if (existingChat) {
-        await transaction.insert(onboardingTokens).values({
-          chatId: existingChat.id,
-          expiresAt: new Date(Date.now() + onboardingTokenLifetimeMs),
-          tokenHash: hashOnboardingToken(onboardingToken),
-          workspaceId: existingChat.workspaceId,
-        });
-
         return {
           chatId: existingChat.id,
-          isNew: false,
-          onboardingToken,
           telegramChatId: input.telegramChatId,
           title: existingChat.title,
           workspaceId: existingChat.workspaceId,
@@ -117,17 +97,8 @@ export function createConnectChat<TQueryResult extends PgQueryResultHKT>(
         })
         .onConflictDoNothing();
 
-      await transaction.insert(onboardingTokens).values({
-        chatId: chat.id,
-        expiresAt: new Date(Date.now() + onboardingTokenLifetimeMs),
-        tokenHash: hashOnboardingToken(onboardingToken),
-        workspaceId: workspace.id,
-      });
-
       return {
         chatId: chat.id,
-        isNew: true,
-        onboardingToken,
         telegramChatId: input.telegramChatId,
         title: chat.title,
         workspaceId: workspace.id,

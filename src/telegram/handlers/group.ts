@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import type { ConnectChat } from '../../services/connect-chat.js';
+import type { OnboardingInvitationService } from '../../services/onboarding-invitation.js';
 import type { TelegramUpdate } from '../bot.js';
 
 const groupMemberUpdateSchema = z
@@ -47,6 +48,7 @@ function isBotAdded(previousStatus: string, nextStatus: string): boolean {
 export function createGroupUpdateHandler(input: Readonly<{
   botUsername: string;
   connectChat: ConnectChat;
+  onboardingInvitations: OnboardingInvitationService;
 }>): GroupUpdateHandler {
   return async (update, messenger) => {
     const parsedUpdate = groupMemberUpdateSchema.safeParse(update.payload);
@@ -67,10 +69,16 @@ export function createGroupUpdateHandler(input: Readonly<{
       title: memberUpdate.chat.title,
     });
 
+    const invitation = await input.onboardingInvitations.prepareInvitation(connectedChat);
+    if (!invitation) {
+      return;
+    }
+
     await messenger.sendOnboardingCard({
-      onboardingDeepLink: `https://t.me/${input.botUsername}?start=join_${connectedChat.onboardingToken}`,
-      telegramChatId: connectedChat.telegramChatId,
+      onboardingDeepLink: `https://t.me/${input.botUsername}?start=join_${invitation.onboardingToken}`,
+      telegramChatId: invitation.telegramChatId,
       text: onboardingText,
     });
+    await input.onboardingInvitations.markOnboardingMessageSent(invitation);
   };
 }

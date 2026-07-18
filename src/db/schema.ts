@@ -49,6 +49,7 @@ export const chats = pgTable(
     timezone: text('timezone').notNull().default('UTC'),
     dailyDigestTime: time('daily_digest_time').notNull().default('18:00:00'),
     analysisStartedAt: timestamp('analysis_started_at', { withTimezone: true }).notNull().defaultNow(),
+    onboardingMessageSentAt: timestamp('onboarding_message_sent_at', { withTimezone: true }),
     isActive: boolean('is_active').notNull().default(true),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

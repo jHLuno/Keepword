@@ -1,8 +1,9 @@
-import { count } from 'drizzle-orm';
+import { count, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 
 import { buildApp } from '../../src/app.js';
 import { chatMemberships, chats, onboardingTokens, workspaces } from '../../src/db/schema.js';
+import { createConnectChat } from '../../src/services/connect-chat.js';
 import { createFakeTelegram, type FakeTelegramOptions } from '../helpers/fake-telegram.js';
 import { createPgliteTestDatabase, type PgliteTestDatabase } from '../helpers/pglite.js';
 
@@ -69,6 +70,16 @@ async function countRows(table: typeof chats | typeof workspaces | typeof chatMe
   return Number(rows[0]?.total ?? 0);
 }
 
+async function countOnboardingTokensForTelegramChat(telegramChatId: number): Promise<number> {
+  const rows = await database.db
+    .select({ total: count() })
+    .from(onboardingTokens)
+    .innerJoin(chats, eq(onboardingTokens.chatId, chats.id))
+    .where(eq(chats.telegramChatId, telegramChatId));
+
+  return Number(rows[0]?.total ?? 0);
+}
+
 beforeAll(async () => {
   database = await createPgliteTestDatabase();
 });
@@ -92,8 +103,31 @@ describe('Telegram webhook', () => {
     await app.close();
   });
 
+  test('connectChat is idempotent and does not create onboarding invitations', async () => {
+    const connectChat = createConnectChat(database.db);
+    const input = {
+      adminTelegramUserId: '7004',
+      telegramChatId: '-1001234567894',
+      timezone: 'UTC',
+      title: 'Direct idempotency group',
+    };
+    const chatsBefore = await countRows(chats);
+    const tokensBefore = await countRows(onboardingTokens);
+
+    const firstConnection = await connectChat(input);
+    const secondConnection = await connectChat(input);
+
+    expect(secondConnection).toEqual(firstConnection);
+    expect(await countRows(chats)).toBe(chatsBefore + 1);
+    expect(await countRows(onboardingTokens)).toBe(tokensBefore);
+  });
+
   test('connects a new group once and ignores a repeated update', async () => {
     const { app, fakeTelegram } = buildWebhookApp();
+    const chatsBefore = await countRows(chats);
+    const membershipsBefore = await countRows(chatMemberships);
+    const tokensBefore = await countRows(onboardingTokens);
+    const workspacesBefore = await countRows(workspaces);
     const request = {
       headers: { 'x-telegram-bot-api-secret-token': webhookSecret },
       method: 'POST' as const,
@@ -104,10 +138,10 @@ describe('Telegram webhook', () => {
     expect((await app.inject(request)).statusCode).toBe(200);
     expect((await app.inject(request)).statusCode).toBe(200);
 
-    expect(await countRows(chats)).toBe(1);
-    expect(await countRows(workspaces)).toBe(1);
-    expect(await countRows(chatMemberships)).toBe(1);
-    expect(await countRows(onboardingTokens)).toBe(1);
+    expect(await countRows(chats)).toBe(chatsBefore + 1);
+    expect(await countRows(workspaces)).toBe(workspacesBefore + 1);
+    expect(await countRows(chatMemberships)).toBe(membershipsBefore + 1);
+    expect(await countRows(onboardingTokens)).toBe(tokensBefore + 1);
     expect(fakeTelegram.handledUpdateIds).toEqual([botAddedToGroupUpdate.update_id]);
     expect(fakeTelegram.onboardingCards).toHaveLength(1);
 
@@ -145,6 +179,7 @@ describe('Telegram webhook', () => {
 
   test('retries onboarding-card delivery after the group connection already exists', async () => {
     const { app, fakeTelegram } = buildWebhookApp({ onboardingCardFailuresBeforeSuccess: 1 });
+    const chatsBefore = await countRows(chats);
     const retryUpdate = {
       ...botAddedToGroupUpdate,
       my_chat_member: {
@@ -165,11 +200,13 @@ describe('Telegram webhook', () => {
     };
 
     expect((await app.inject(request)).statusCode).toBe(500);
-    expect(await countRows(chats)).toBe(2);
+    expect(await countRows(chats)).toBe(chatsBefore + 1);
+    expect(await countOnboardingTokensForTelegramChat(retryUpdate.my_chat_member.chat.id)).toBe(1);
     expect(fakeTelegram.onboardingCards).toHaveLength(0);
 
     expect((await app.inject(request)).statusCode).toBe(200);
     expect(fakeTelegram.handledUpdateIds).toEqual([retryUpdate.update_id, retryUpdate.update_id]);
+    expect(await countOnboardingTokensForTelegramChat(retryUpdate.my_chat_member.chat.id)).toBe(1);
     expect(fakeTelegram.onboardingCards).toHaveLength(1);
     expect(fakeTelegram.onboardingCards[0]?.onboardingDeepLink).not.toContain(
       String(retryUpdate.my_chat_member.chat.id),
@@ -177,6 +214,37 @@ describe('Telegram webhook', () => {
 
     expect((await app.inject(request)).statusCode).toBe(200);
     expect(fakeTelegram.handledUpdateIds).toEqual([retryUpdate.update_id, retryUpdate.update_id]);
+    expect(fakeTelegram.onboardingCards).toHaveLength(1);
+
+    await app.close();
+  });
+
+  test('does not send another onboarding card after a successful delivery', async () => {
+    const { app, fakeTelegram } = buildWebhookApp();
+    const initialUpdate = {
+      ...botAddedToGroupUpdate,
+      my_chat_member: {
+        ...botAddedToGroupUpdate.my_chat_member,
+        chat: {
+          ...botAddedToGroupUpdate.my_chat_member.chat,
+          id: -1_001_234_567_895,
+          title: 'Already invited group',
+        },
+      },
+      update_id: 2_004,
+    };
+    const repeatedBotAddUpdate = { ...initialUpdate, update_id: 2_005 };
+    const request = (payload: typeof initialUpdate) => ({
+      headers: { 'x-telegram-bot-api-secret-token': webhookSecret },
+      method: 'POST' as const,
+      payload,
+      url: '/telegram/webhook',
+    });
+
+    expect((await app.inject(request(initialUpdate))).statusCode).toBe(200);
+    expect(fakeTelegram.onboardingCards).toHaveLength(1);
+
+    expect((await app.inject(request(repeatedBotAddUpdate))).statusCode).toBe(200);
     expect(fakeTelegram.onboardingCards).toHaveLength(1);
 
     await app.close();

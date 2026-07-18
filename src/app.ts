@@ -8,6 +8,7 @@ import { createLogger, type Logger } from './observability/logger.js';
 import type { RepositoryDatabase } from './repositories/database.js';
 import { createUpdatesRepository } from './repositories/updates.js';
 import { createConnectChat } from './services/connect-chat.js';
+import { createOnboardingInvitationService } from './services/onboarding-invitation.js';
 import { createTelegramBot, type TelegramAdapterFactory } from './telegram/bot.js';
 import { createGroupUpdateHandler } from './telegram/handlers/group.js';
 import type { PgQueryResultHKT } from 'drizzle-orm/pg-core';
@@ -41,9 +42,11 @@ export function buildApp<TQueryResult extends PgQueryResultHKT>(
 ): FastifyInstance {
   const logger = dependencies.logger ?? createLogger();
   const connectChat = createConnectChat(dependencies.database);
+  const onboardingInvitations = createOnboardingInvitationService(dependencies.database);
   const groupUpdateHandler = createGroupUpdateHandler({
     botUsername: config.telegramBotUsername,
     connectChat,
+    onboardingInvitations,
   });
   const telegram = dependencies.telegramAdapterFactory
     ? dependencies.telegramAdapterFactory(groupUpdateHandler)
