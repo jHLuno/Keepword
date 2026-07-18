@@ -4,6 +4,7 @@ import {
   foreignKey,
   integer,
   index,
+  jsonb,
   pgEnum,
   pgTable,
   serial,
@@ -29,6 +30,13 @@ export const suggestionStatus = pgEnum('suggestion_status', [
   'confirmed',
   'rejected',
   'expired',
+]);
+
+export const suggestionEventType = pgEnum('suggestion_event_type', [
+  'suggested',
+  'edited',
+  'confirmed',
+  'rejected',
 ]);
 
 export const membershipRole = pgEnum('membership_role', ['admin', 'member']);
@@ -202,6 +210,7 @@ export const commitmentSuggestions = pgTable(
       table.status,
     ),
     index('commitment_suggestions_chat_assignee_due_idx').on(table.chatId, table.assigneeUserId, table.dueAt),
+    unique('commitment_suggestions_id_workspace_chat_unique').on(table.id, table.workspaceId, table.chatId),
     uniqueIndex('commitment_suggestions_pending_normalized_unique')
       .on(table.workspaceId, table.chatId, table.assigneeUserId, table.normalizedTitle)
       .where(sql`${table.status} = 'pending' and ${table.assigneeUserId} is not null`),
@@ -220,6 +229,41 @@ export const commitmentSuggestions = pgTable(
       columns: [table.chatId, table.workspaceId, table.assigneeUserId],
       foreignColumns: [chatMemberships.chatId, chatMemberships.workspaceId, chatMemberships.userId],
     }),
+  ],
+);
+
+export const suggestionEvents = pgTable(
+  'suggestion_events',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    chatId: uuid('chat_id').notNull(),
+    suggestionId: uuid('suggestion_id').notNull(),
+    eventType: suggestionEventType('event_type').notNull(),
+    actorUserId: uuid('actor_user_id').notNull(),
+    snapshot: jsonb('snapshot').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('suggestion_events_workspace_chat_created_idx').on(table.workspaceId, table.chatId, table.createdAt),
+    index('suggestion_events_suggestion_created_idx').on(table.suggestionId, table.createdAt),
+    foreignKey({
+      name: 'suggestion_events_chat_workspace_fkey',
+      columns: [table.chatId, table.workspaceId],
+      foreignColumns: [chats.id, chats.workspaceId],
+    }).onDelete('cascade'),
+    foreignKey({
+      name: 'suggestion_events_suggestion_scope_fkey',
+      columns: [table.suggestionId, table.workspaceId, table.chatId],
+      foreignColumns: [commitmentSuggestions.id, commitmentSuggestions.workspaceId, commitmentSuggestions.chatId],
+    }).onDelete('cascade'),
+    foreignKey({
+      name: 'suggestion_events_actor_membership_fkey',
+      columns: [table.chatId, table.workspaceId, table.actorUserId],
+      foreignColumns: [chatMemberships.chatId, chatMemberships.workspaceId, chatMemberships.userId],
+    }).onDelete('cascade'),
   ],
 );
 

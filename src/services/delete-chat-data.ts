@@ -10,6 +10,7 @@ import {
   notificationDeliveries,
   onboardingTokens,
   sourceMessages,
+  suggestionEvents,
 } from '../db/schema.js';
 import type { RepositoryDatabase } from '../repositories/database.js';
 import type { CurrentChatAdminChecker } from './authorize-action.js';
@@ -77,6 +78,10 @@ export function createDeleteChatData<TQueryResult extends PgQueryResultHKT>(
       await transaction.delete(manualCaptureSources).where(and(
         eq(manualCaptureSources.chatId, input.chatId),
         eq(manualCaptureSources.workspaceId, input.workspaceId),
+      ));
+      await transaction.delete(suggestionEvents).where(and(
+        eq(suggestionEvents.chatId, input.chatId),
+        eq(suggestionEvents.workspaceId, input.workspaceId),
       ));
       await transaction.delete(commitmentSuggestions).where(and(
         eq(commitmentSuggestions.chatId, input.chatId),

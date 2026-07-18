@@ -71,6 +71,13 @@
       "when": 1784450000000,
       "tag": "0009_check_page_callback_tokens",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1784470000000,
+      "tag": "0010_suggestion_events",
+      "breakpoints": true
     }
   ]
 }

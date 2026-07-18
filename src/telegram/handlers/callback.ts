@@ -296,7 +296,10 @@ export function createCommitmentActionCallbackHandler<TQueryResult extends PgQue
         return;
       }
 
-      await createRejectSuggestion(input.database)({ suggestionId: resolvedCallback.suggestionId });
+      await createRejectSuggestion(input.database)({
+        rejectedByUserId: scopedActor.userId,
+        suggestionId: resolvedCallback.suggestionId,
+      });
       await messenger.answerCallbackQuery({ callbackQueryId: callback.id, text: 'Договорённость не будет сохранена.' });
       await messenger.sendActionFeedback?.({ telegramChatId, text: 'Договорённость не будет сохранена.' });
       input.logger?.info('commitment_rejected', {

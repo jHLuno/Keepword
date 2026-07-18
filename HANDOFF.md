@@ -3,6 +3,21 @@
 ## 2026-07-19 — Handoff
 
 ### Done
+- Added migration `0010_suggestion_events` and append-only, chat/workspace-scoped suggestion-decision memory.
+- Creation, edit, confirmation, rejection, and chat privacy deletion have integration coverage, including a confirm/reject race.
+
+### Not done
+- Calibration and reliability aggregates are not implemented yet; they will derive only from this scoped event history in later plan tasks.
+
+### Risks / blockers
+- Railway/staging migration and smoke test remain a release-verification task; no production database was touched locally.
+
+### Next recommended step
+- Implement task 3: a private, chat-scoped admin calibration section with 30 resolved suggestions in 90 days as the minimum threshold.
+
+## 2026-07-19 — Handoff
+
+### Done
 - Product documentation and a detailed implementation plan now define Trust Memory, workspace calibration, action-first cross-chat `/check`, and privacy-safe chat-scoped reliability.
 
 ### Not done

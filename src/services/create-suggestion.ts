@@ -1,10 +1,12 @@
 import type { PgQueryResultHKT } from 'drizzle-orm/pg-core';
 import { and, eq } from 'drizzle-orm';
 
-import { chats } from '../db/schema.js';
+import { chats, sourceMessages, suggestionEvents } from '../db/schema.js';
 import { ChatInactiveWriteError } from '../repositories/chats.js';
 import { createCommitmentsRepository, type PendingSuggestionInput } from '../repositories/commitments.js';
 import type { RepositoryDatabase } from '../repositories/database.js';
+
+import { snapshotSuggestion } from './suggestion-snapshots.js';
 
 export type CreateSuggestion = (input: PendingSuggestionInput) => Promise<Readonly<{
   duplicate: boolean;
@@ -44,6 +46,29 @@ export function createSuggestion<TQueryResult extends PgQueryResultHKT>(
 
       const suggestion = await commitments.createPendingSuggestion(input);
       if (suggestion) {
+        const source = await transaction
+          .select({ authorUserId: sourceMessages.authorUserId })
+          .from(sourceMessages)
+          .where(
+            and(
+              eq(sourceMessages.id, input.sourceMessageId),
+              eq(sourceMessages.workspaceId, input.workspaceId),
+              eq(sourceMessages.chatId, input.chatId),
+            ),
+          )
+          .limit(1);
+        const sourceAuthor = source[0];
+        if (!sourceAuthor) {
+          throw new Error('Suggestion source was unavailable while recording its event');
+        }
+        await transaction.insert(suggestionEvents).values({
+          actorUserId: sourceAuthor.authorUserId,
+          chatId: suggestion.chatId,
+          eventType: 'suggested',
+          snapshot: { original: snapshotSuggestion(suggestion) },
+          suggestionId: suggestion.id,
+          workspaceId: suggestion.workspaceId,
+        });
         return { duplicate: false, id: suggestion.id };
       }
 

@@ -1,9 +1,11 @@
 import { and, eq, gt, isNull } from 'drizzle-orm';
 import type { PgQueryResultHKT } from 'drizzle-orm/pg-core';
 
-import { chats, commitmentRescheduleSessions, commitmentSuggestions, suggestionEditSessions, users } from '../db/schema.js';
+import { chats, commitmentRescheduleSessions, commitmentSuggestions, suggestionEditSessions, suggestionEvents, users } from '../db/schema.js';
 import { normalizeSuggestionTitle } from '../repositories/commitments.js';
 import type { RepositoryDatabase } from '../repositories/database.js';
+
+import { snapshotSuggestion } from './suggestion-snapshots.js';
 
 const editSessionLifetimeMs = 15 * 60 * 1_000;
 
@@ -97,7 +99,7 @@ export function createSuggestionEditSessionService<TQueryResult extends PgQueryR
           throw new SuggestionEditSessionError('EDIT_SESSION_UNAVAILABLE');
         }
         const currentRows = await transaction
-          .select({ title: commitmentSuggestions.title })
+          .select()
           .from(commitmentSuggestions)
           .where(and(eq(commitmentSuggestions.id, input.suggestionId), eq(commitmentSuggestions.status, 'pending')))
           .limit(1);
@@ -115,10 +117,19 @@ export function createSuggestionEditSessionService<TQueryResult extends PgQueryR
             updatedAt: new Date(),
           })
           .where(and(eq(commitmentSuggestions.id, input.suggestionId), eq(commitmentSuggestions.status, 'pending')))
-          .returning({ id: commitmentSuggestions.id });
-        if (!rows[0]) {
+          .returning();
+        const updatedSuggestion = rows[0];
+        if (!updatedSuggestion) {
           throw new SuggestionEditSessionError('EDIT_SESSION_UNAVAILABLE');
         }
+        await transaction.insert(suggestionEvents).values({
+          actorUserId: input.actorUserId,
+          chatId: updatedSuggestion.chatId,
+          eventType: 'edited',
+          snapshot: { after: snapshotSuggestion(updatedSuggestion), before: snapshotSuggestion(current) },
+          suggestionId: updatedSuggestion.id,
+          workspaceId: updatedSuggestion.workspaceId,
+        });
       });
     },
 
