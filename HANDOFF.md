@@ -3,6 +3,14 @@
 ## 2026-07-19 — Handoff
 
 ### Done
+- Telegram webhook requests acknowledge immediately; long-running AI extraction no longer blocks Telegram's 60-second delivery timeout.
+
+### Next recommended step
+- Wait for the Web deployment, send a new commitment message, and verify a fast HTTP 200 followed by a suggestion card.
+
+## 2026-07-19 — Handoff
+
+### Done
 - Fixed webhook processing by initializing grammY before each process instance handles its first update.
 - Added regression coverage for initialization before webhook dispatch.
 

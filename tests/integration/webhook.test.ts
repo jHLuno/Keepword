@@ -1,5 +1,5 @@
 import { count, eq } from 'drizzle-orm';
-import { afterAll, beforeAll, describe, expect, test } from 'vitest';
+import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
 
 import { buildApp } from '../../src/app.js';
 import { chatMemberships, chats, onboardingTokens, workspaces } from '../../src/db/schema.js';
@@ -157,7 +157,7 @@ describe('Telegram webhook', () => {
     await app.close();
   });
 
-  test('retries a failed dispatch and suppresses only the later duplicate', async () => {
+  test('acknowledges Telegram immediately and retries failed work asynchronously', async () => {
     const { app, fakeTelegram } = buildWebhookApp({ failuresBeforeSuccess: 1 });
     const retryUpdate = { ...botAddedToGroupUpdate, update_id: 2_002 };
     const request = {
@@ -167,11 +167,11 @@ describe('Telegram webhook', () => {
       url: '/telegram/webhook',
     };
 
-    expect((await app.inject(request)).statusCode).toBe(500);
-    expect(fakeTelegram.handledUpdateIds).toEqual([retryUpdate.update_id]);
+    expect((await app.inject(request)).statusCode).toBe(200);
+    await vi.waitFor(() => expect(fakeTelegram.handledUpdateIds).toEqual([retryUpdate.update_id]));
 
     expect((await app.inject(request)).statusCode).toBe(200);
-    expect(fakeTelegram.handledUpdateIds).toEqual([retryUpdate.update_id, retryUpdate.update_id]);
+    await vi.waitFor(() => expect(fakeTelegram.handledUpdateIds).toEqual([retryUpdate.update_id, retryUpdate.update_id]));
 
     expect((await app.inject(request)).statusCode).toBe(200);
     expect(fakeTelegram.handledUpdateIds).toEqual([retryUpdate.update_id, retryUpdate.update_id]);
@@ -209,8 +209,11 @@ describe('Telegram webhook', () => {
       url: '/telegram/webhook',
     });
 
-    expect(response.statusCode).toBe(500);
-    expect(errors).toContainEqual({ event: 'telegram_update_dispatch_failed', errorCode: 'TELEGRAM_UPDATE_DISPATCH_FAILED_42P01' });
+    expect(response.statusCode).toBe(200);
+    await vi.waitFor(() => expect(errors).toContainEqual({
+      event: 'telegram_update_dispatch_failed',
+      errorCode: 'TELEGRAM_UPDATE_DISPATCH_FAILED_42P01',
+    }));
     await app.close();
   });
 
@@ -236,15 +239,19 @@ describe('Telegram webhook', () => {
       url: '/telegram/webhook',
     };
 
-    expect((await app.inject(request)).statusCode).toBe(500);
-    expect(await countRows(chats)).toBe(chatsBefore + 1);
-    expect(await countOnboardingTokensForTelegramChat(retryUpdate.my_chat_member.chat.id)).toBe(1);
-    expect(fakeTelegram.onboardingCards).toHaveLength(0);
+    expect((await app.inject(request)).statusCode).toBe(200);
+    await vi.waitFor(async () => {
+      expect(await countRows(chats)).toBe(chatsBefore + 1);
+      expect(await countOnboardingTokensForTelegramChat(retryUpdate.my_chat_member.chat.id)).toBe(1);
+      expect(fakeTelegram.onboardingCards).toHaveLength(0);
+    });
 
     expect((await app.inject(request)).statusCode).toBe(200);
-    expect(fakeTelegram.handledUpdateIds).toEqual([retryUpdate.update_id, retryUpdate.update_id]);
-    expect(await countOnboardingTokensForTelegramChat(retryUpdate.my_chat_member.chat.id)).toBe(1);
-    expect(fakeTelegram.onboardingCards).toHaveLength(1);
+    await vi.waitFor(async () => {
+      expect(fakeTelegram.handledUpdateIds).toEqual([retryUpdate.update_id, retryUpdate.update_id]);
+      expect(await countOnboardingTokensForTelegramChat(retryUpdate.my_chat_member.chat.id)).toBe(1);
+      expect(fakeTelegram.onboardingCards).toHaveLength(1);
+    });
     expect(fakeTelegram.onboardingCards[0]?.onboardingDeepLink).not.toContain(
       String(retryUpdate.my_chat_member.chat.id),
     );
