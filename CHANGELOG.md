@@ -1,5 +1,13 @@
 [Earlier entries](docs/archive/CHANGELOG-pre-S04.md)
 
+## 2026-07-19 — Internal error diagnostics
+
+### Fixed
+- Known internal failures now emit safe static diagnostic codes without writing exception text, chat content, or secrets to production logs.
+
+### Verified
+- `pnpm lint && pnpm typecheck && pnpm test && pnpm build` — 26 test files and 119 tests passed.
+
 ## 2026-07-19 — HTTP diagnostic logging
 
 ### Fixed

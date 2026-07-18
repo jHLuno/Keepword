@@ -15,6 +15,14 @@ export type Logger = Readonly<{
   error: (event: string, metadata: LogMetadata) => void;
 }>;
 
+const safeInternalErrorCodes = new Map<string, string>([
+  ['Expected a database row', 'DATABASE_RETURNING_EMPTY'],
+  ['Connected chat no longer exists', 'ONBOARDING_CHAT_MISSING'],
+  ['Extraction message must belong to the requested chat', 'EXTRACTION_CONTEXT_INVALID'],
+  ['Suggestion callback nonce creation was incomplete', 'SUGGESTION_CALLBACKS_INCOMPLETE'],
+  ['Could not issue reminder callbacks', 'REMINDER_CALLBACKS_INCOMPLETE'],
+]);
+
 export function safeErrorCode(error: unknown, fallback: string): string {
   if (typeof error !== 'object' || error === null) {
     return fallback;
@@ -33,6 +41,12 @@ export function safeErrorCode(error: unknown, fallback: string): string {
     const status = candidate[property];
     if (typeof status === 'number' && Number.isInteger(status) && status >= 100 && status <= 599) {
       return `${fallback}_HTTP_${status}`;
+    }
+  }
+  if (error instanceof Error) {
+    const internalCode = safeInternalErrorCodes.get(error.message);
+    if (internalCode) {
+      return `${fallback}_${internalCode}`;
     }
   }
   return fallback;

@@ -60,3 +60,11 @@ test('uses a safe Telegram API status without serializing its description', () =
     'TELEGRAM_UPDATE_DISPATCH_FAILED_HTTP_400',
   );
 });
+
+test('maps a known internal error to a safe diagnostic code', () => {
+  const error = new Error('Expected a database row');
+
+  expect(safeErrorCode(error, 'TELEGRAM_UPDATE_DISPATCH_FAILED')).toBe(
+    'TELEGRAM_UPDATE_DISPATCH_FAILED_DATABASE_RETURNING_EMPTY',
+  );
+});
