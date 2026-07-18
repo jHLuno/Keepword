@@ -31,7 +31,7 @@ const privateHelpText = [
   'Перешлите сообщение с обещанием — я предложу карточку для подтверждения.',
 ].join('\n');
 
-const privateOnlyText = 'Эта команда работает в личном чате с Keepword.';
+const groupOnlyText = 'Используйте эту команду в подключённой группе Keepword.';
 
 export function parseTelegramCommand(text: string): TelegramCommand | null {
   const parsed = /^\/([a-z]+)(?:@\w+)?(?:\s+(.+))?$/i.exec(text.trim());
@@ -88,7 +88,7 @@ export function createPrivateCommandHandler<TQueryResult extends PgQueryResultHK
         return { handled: true, text: privateHelpText };
       }
       if (input.command.name === 'invite' || input.command.name === 'keep' || input.command.name === 'notifications') {
-        return { handled: true, text: privateOnlyText };
+        return { handled: true, text: groupOnlyText };
       }
       if (input.command.name === 'privacy') {
         return {

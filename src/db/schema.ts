@@ -5,6 +5,7 @@ import {
   index,
   pgEnum,
   pgTable,
+  serial,
   text,
   time,
   timestamp,
@@ -142,6 +143,32 @@ export const sourceMessages = pgTable(
       columns: [table.chatId, table.workspaceId, table.authorUserId],
       foreignColumns: [chatMemberships.chatId, chatMemberships.workspaceId, chatMemberships.userId],
     }),
+  ],
+);
+
+export const manualCaptureSources = pgTable(
+  'manual_capture_sources',
+  {
+    id: serial('id').primaryKey(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    chatId: uuid('chat_id').notNull(),
+    senderTelegramUserId: bigint('sender_telegram_user_id', { mode: 'number' }).notNull(),
+    privateTelegramMessageId: bigint('private_telegram_message_id', { mode: 'number' }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique('manual_capture_sources_chat_sender_message_unique').on(
+      table.chatId,
+      table.senderTelegramUserId,
+      table.privateTelegramMessageId,
+    ),
+    foreignKey({
+      name: 'manual_capture_sources_chat_workspace_fkey',
+      columns: [table.chatId, table.workspaceId],
+      foreignColumns: [chats.id, chats.workspaceId],
+    }).onDelete('cascade'),
   ],
 );
 

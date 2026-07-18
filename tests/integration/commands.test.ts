@@ -50,6 +50,15 @@ describe('Telegram commands', () => {
     expect(fakeTelegram.privateMessages).toEqual([expect.stringContaining('/tasks')]);
   });
 
+  test.each(['/invite', '/keep', '/notifications'])('directs private %s to a connected group', async (command) => {
+    const handler = createPrivateUpdateHandler({ database: database.db });
+    const fakeTelegram = createFakeTelegram();
+
+    await fakeTelegram.telegramAdapterFactory(createNoopGroupHandler(), undefined, handler).handleUpdate(privateUpdate(9804, command));
+
+    expect(fakeTelegram.privateMessages).toEqual([expect.stringContaining('подключённой группе')]);
+  });
+
   test('shows tasks and changes notifications only in the requesting user selected chat', async () => {
     const actorTelegramUserId = 9810;
     const firstChat = await createConnectChat(database.db)({

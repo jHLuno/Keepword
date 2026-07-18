@@ -2,7 +2,7 @@ import type { PgQueryResultHKT } from 'drizzle-orm/pg-core';
 import { and, asc, eq, isNotNull } from 'drizzle-orm';
 
 import type { CommitmentExtractor } from '../ai/extractor.js';
-import { chatMemberships, chats, users } from '../db/schema.js';
+import { chatMemberships, chats, manualCaptureSources, users } from '../db/schema.js';
 import type { Logger } from '../observability/logger.js';
 import { renderPrivateSuggestionText, type InlineKeyboardMarkup } from '../telegram/messages.js';
 import type { RepositoryDatabase } from '../repositories/database.js';
@@ -34,7 +34,9 @@ export type ManualCapture = Readonly<{
 }>;
 
 type ConnectedChat = Readonly<{
+  id: string;
   telegramChatId: number;
+  workspaceId: string;
 }>;
 
 function parseTelegramMessageId(value: string): number | null {
@@ -53,7 +55,7 @@ export function createManualCapture<TQueryResult extends PgQueryResultHKT>(
 ): ManualCapture {
   async function connectedChats(telegramUserId: number): Promise<readonly ConnectedChat[]> {
     return database
-      .select({ telegramChatId: chats.telegramChatId })
+      .select({ id: chats.id, telegramChatId: chats.telegramChatId, workspaceId: chats.workspaceId })
       .from(chatMemberships)
       .innerJoin(users, eq(chatMemberships.userId, users.id))
       .innerJoin(chats, and(eq(chatMemberships.chatId, chats.id), eq(chatMemberships.workspaceId, chats.workspaceId)))
@@ -67,6 +69,56 @@ export function createManualCapture<TQueryResult extends PgQueryResultHKT>(
       .orderBy(asc(chats.createdAt));
   }
 
+  async function reserveSourceMessageId(input: Readonly<{
+    chatId: string;
+    privateTelegramMessageId: number;
+    senderTelegramUserId: number;
+    workspaceId: string;
+  }>): Promise<number | null> {
+    return database.transaction(async (transaction) => {
+      const existing = (
+        await transaction
+          .select({ id: manualCaptureSources.id })
+          .from(manualCaptureSources)
+          .where(
+            and(
+              eq(manualCaptureSources.chatId, input.chatId),
+              eq(manualCaptureSources.workspaceId, input.workspaceId),
+              eq(manualCaptureSources.senderTelegramUserId, input.senderTelegramUserId),
+              eq(manualCaptureSources.privateTelegramMessageId, input.privateTelegramMessageId),
+            ),
+          )
+          .limit(1)
+      )[0];
+      const source = existing ?? (
+        await transaction
+          .insert(manualCaptureSources)
+          .values({
+            chatId: input.chatId,
+            privateTelegramMessageId: input.privateTelegramMessageId,
+            senderTelegramUserId: input.senderTelegramUserId,
+            workspaceId: input.workspaceId,
+          })
+          .onConflictDoNothing()
+          .returning({ id: manualCaptureSources.id })
+      )[0] ?? (
+        await transaction
+          .select({ id: manualCaptureSources.id })
+          .from(manualCaptureSources)
+          .where(
+            and(
+              eq(manualCaptureSources.chatId, input.chatId),
+              eq(manualCaptureSources.workspaceId, input.workspaceId),
+              eq(manualCaptureSources.senderTelegramUserId, input.senderTelegramUserId),
+              eq(manualCaptureSources.privateTelegramMessageId, input.privateTelegramMessageId),
+            ),
+          )
+          .limit(1)
+      )[0];
+      return source && Number.isSafeInteger(source.id) ? -source.id : null;
+    });
+  }
+
   return {
     async capturePrivateMessage(input) {
       const telegramMessageId = parseTelegramMessageId(input.telegramMessageId);
@@ -78,6 +130,15 @@ export function createManualCapture<TQueryResult extends PgQueryResultHKT>(
         ? availableChats.length === 1 ? availableChats[0] : undefined
         : availableChats.find((chat) => String(chat.telegramChatId) === input.telegramChatId);
       if (!selectedChat) {
+        return { status: 'unavailable' };
+      }
+      const sourceTelegramMessageId = await reserveSourceMessageId({
+        chatId: selectedChat.id,
+        privateTelegramMessageId: telegramMessageId,
+        senderTelegramUserId: input.sender.telegramUserId,
+        workspaceId: selectedChat.workspaceId,
+      });
+      if (sourceTelegramMessageId === null) {
         return { status: 'unavailable' };
       }
       const analyzer = createAnalyzeGroupMessage(
@@ -101,7 +162,7 @@ export function createManualCapture<TQueryResult extends PgQueryResultHKT>(
         defaultAssigneeTelegramUserId: input.sender.telegramUserId,
         sentAt: input.sentAt,
         telegramChatId: String(selectedChat.telegramChatId),
-        telegramMessageId: String(-telegramMessageId),
+        telegramMessageId: String(sourceTelegramMessageId),
         text: input.text,
       });
       return { status };

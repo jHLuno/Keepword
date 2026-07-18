@@ -2,7 +2,7 @@ import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 
 import type { CommitmentCandidate } from '../../src/domain/extraction.js';
-import { chatMemberships, commitments, commitmentSuggestions, users } from '../../src/db/schema.js';
+import { chatMemberships, commitments, commitmentSuggestions, sourceMessages, users } from '../../src/db/schema.js';
 import { createConnectChat } from '../../src/services/connect-chat.js';
 import { createManualCapture } from '../../src/services/manual-capture.js';
 import { createCommitmentActionCallbackHandler } from '../../src/telegram/handlers/callback.js';
@@ -162,5 +162,70 @@ describe('manual private capture', () => {
     const confirmed = await database.db.select().from(commitments).where(eq(commitments.chatId, chat.chatId));
     expect(confirmed).toHaveLength(1);
     expect(answers).toEqual(['Договорённость сохранена.']);
+  });
+
+  test('keeps equal private message IDs from different users isolated in one selected group', async () => {
+    const chat = await createConnectChat(database.db)({
+      adminTelegramUserId: '9921', telegramChatId: '-1009921', timezone: 'UTC', title: 'Collision scope',
+    });
+    const [firstUser, secondUser] = await database.db.insert(users).values([
+      { firstName: 'Aigerim', privateChatStartedAt: new Date(), telegramUserId: 9922 },
+      { firstName: 'Baurzhan', privateChatStartedAt: new Date(), telegramUserId: 9923 },
+    ]).returning();
+    if (!firstUser || !secondUser) throw new Error('Expected private users');
+    await database.db.insert(chatMemberships).values([
+      { chatId: chat.chatId, notificationsEnabled: true, userId: firstUser.id, workspaceId: chat.workspaceId },
+      { chatId: chat.chatId, notificationsEnabled: true, userId: secondUser.id, workspaceId: chat.workspaceId },
+    ]);
+    const capture = createManualCapture(database.db, {
+      extractCandidate: (input) => Promise.resolve({
+        ...forwardedPromise,
+        description: input.message.text,
+        title: input.message.text.includes('бюджет') ? 'Подготовить бюджет' : 'Подготовить смету',
+      }),
+    }, 'callback-test-secret');
+    const firstCards: Readonly<{ replyMarkup: { inline_keyboard: { callback_data: string; text: string }[][] } }>[] = [];
+    const secondCards: Readonly<{ replyMarkup: { inline_keyboard: { callback_data: string; text: string }[][] } }>[] = [];
+
+    await capture.capturePrivateMessage({
+      messenger: { sendPrivateSuggestion: (card) => { firstCards.push(card); return Promise.resolve(); } },
+      sender: { firstName: 'Aigerim', telegramUserId: 9922 },
+      sentAt: new Date('2026-07-18T10:00:00.000Z'), telegramChatId: chat.telegramChatId,
+      telegramMessageId: '77', text: 'Я подготовлю бюджет к пятнице',
+    });
+    await capture.capturePrivateMessage({
+      messenger: { sendPrivateSuggestion: (card) => { secondCards.push(card); return Promise.resolve(); } },
+      sender: { firstName: 'Baurzhan', telegramUserId: 9923 },
+      sentAt: new Date('2026-07-18T10:01:00.000Z'), telegramChatId: chat.telegramChatId,
+      telegramMessageId: '77', text: 'Я подготовлю смету к пятнице',
+    });
+
+    const sources = await database.db
+      .select({ authorTelegramUserId: users.telegramUserId, text: sourceMessages.messageText })
+      .from(sourceMessages)
+      .innerJoin(users, eq(sourceMessages.authorUserId, users.id))
+      .where(eq(sourceMessages.chatId, chat.chatId));
+    expect(sources).toEqual(expect.arrayContaining([
+      { authorTelegramUserId: 9922, text: 'Я подготовлю бюджет к пятнице' },
+      { authorTelegramUserId: 9923, text: 'Я подготовлю смету к пятнице' },
+    ]));
+    const foreignConfirm = firstCards[0]?.replyMarkup.inline_keyboard.flat().find((button) => button.text === 'Подтвердить')?.callback_data;
+    if (!foreignConfirm) throw new Error('Expected first user confirmation callback');
+    const answers: string[] = [];
+    await createCommitmentActionCallbackHandler({ callbackSigningSecret: 'callback-test-secret', database: database.db })({
+      payload: {
+        callback_query: {
+          data: foreignConfirm,
+          from: { first_name: 'Baurzhan', id: 9923 },
+          id: 'cross-user-confirm',
+          message: { chat: { id: 9923, type: 'private' } },
+        },
+      },
+      updateId: 9923,
+    }, { answerCallbackQuery: ({ text }) => { answers.push(text); return Promise.resolve(); } });
+
+    expect(secondCards).toHaveLength(1);
+    expect(answers).toEqual(['У вас нет прав на это действие.']);
+    expect(await database.db.select().from(commitments).where(eq(commitments.chatId, chat.chatId))).toHaveLength(0);
   });
 });
