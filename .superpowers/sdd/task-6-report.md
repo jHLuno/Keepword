@@ -29,4 +29,18 @@ Implemented and verified.
 
 ## Scope note
 
-No database migration was needed: the scoped `source_messages`, `commitment_suggestions`, and `commitments` schema already existed. Confirmation, editing, rejection, and callback resolution remain deliberately out of scope for Task 7.
+The original scoped `source_messages`, `commitment_suggestions`, and `commitments` schema supported the first vertical slice. Confirmation, editing, rejection, and callback action handling remain deliberately out of scope for Task 7.
+
+## P1 follow-up — callback durability and atomic duplicates
+
+- Added the required `CALLBACK_SIGNING_SECRET` configuration value and `.env.example` entry. Callback data is now `kw:<action>:<suggestion UUID>:<HMAC>`: the suggestion ID is resolvable by the server, its HMAC uses the supplied stable secret, and the longest confirm payload is exactly 64 bytes.
+- Removed process-random callback signing. Cards are stable across restarts and multiple instances sharing the configured secret.
+- High-confidence gating now treats whitespace-only `due_date_text` as absent; only a real due date, `due_at`, or explicit clarification permits a suggestion.
+- Added migration `0003_atomic_suggestions` with `normalized_title` and a partial unique index over workspace, chat, assignee, and normalized title for pending suggestions. Inserts use `ON CONFLICT DO NOTHING` and resolve the winning row as a duplicate.
+- Added regression tests for the signing secret, stable/resolvable Telegram callback data, blank deadlines, and concurrent normalized duplicate creation.
+
+### P1 verification
+
+- Red: callback data differed between equivalent cards; missing `CALLBACK_SIGNING_SECRET` was accepted; whitespace due text was suggested; two racing normalized suggestions both inserted.
+- Green: `pnpm vitest run tests/unit/config.test.ts tests/unit/suggestion-messages.test.ts tests/integration/suggestions.test.ts` — passed (9 tests).
+- Full verification: `pnpm lint`, `pnpm typecheck`, `pnpm test` (45 tests), `pnpm build`, and `git diff --check` — passed.

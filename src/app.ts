@@ -53,6 +53,7 @@ export function buildApp<TQueryResult extends PgQueryResultHKT>(
       dependencies.database,
       createCommitmentExtractor(new OpenAI({ apiKey: config.openAiApiKey }), { logger }),
       undefined,
+      config.callbackSigningSecret,
       logger,
     );
   const groupUpdateHandler = createGroupUpdateHandler({

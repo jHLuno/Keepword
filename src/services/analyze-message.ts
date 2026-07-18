@@ -53,7 +53,11 @@ function hasAction(candidate: CommitmentCandidate): candidate is CommitmentCandi
 }
 
 function hasDueDateOrClarification(candidate: CommitmentCandidate): boolean {
-  return candidate.due_at !== null || candidate.due_date_text !== null || candidate.needs_due_date_clarification;
+  return (
+    candidate.due_at !== null ||
+    (candidate.due_date_text !== null && candidate.due_date_text.trim().length > 0) ||
+    candidate.needs_due_date_clarification
+  );
 }
 
 function parseTelegramId(value: string | null): number | null {
@@ -69,6 +73,7 @@ export function createAnalyzeGroupMessage<TQueryResult extends PgQueryResultHKT>
   database: RepositoryDatabase<TQueryResult>,
   extractor: CommitmentExtractor,
   messenger: SuggestionMessenger | undefined,
+  callbackSigningSecret: string,
   logger?: Logger,
 ): AnalyzeGroupMessage {
   const messages = createMessagesRepository(database);
@@ -173,7 +178,14 @@ export function createAnalyzeGroupMessage<TQueryResult extends PgQueryResultHKT>
       messageId: sourceMessage.id,
       workspaceId: chat.workspaceId,
     });
-    const card = renderSuggestion({ dueDateText: candidate.due_date_text, title: candidate.title });
+    const card = renderSuggestion(
+      {
+        dueDateText: candidate.due_date_text,
+        id: createdSuggestion.id,
+        title: candidate.title,
+      },
+      callbackSigningSecret,
+    );
     if (!activeMessenger) {
       throw new Error('A Telegram messenger is required to send a suggestion');
     }

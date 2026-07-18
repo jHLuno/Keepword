@@ -25,6 +25,15 @@ export function createSuggestion<TQueryResult extends PgQueryResultHKT>(
     }
 
     const suggestion = await commitments.createPendingSuggestion(input);
-    return { duplicate: false, id: suggestion.id };
+    if (suggestion) {
+      return { duplicate: false, id: suggestion.id };
+    }
+
+    const concurrentDuplicateId = await commitments.findActiveDuplicate(input);
+    if (!concurrentDuplicateId) {
+      throw new Error('Pending suggestion insert conflicted without an active duplicate');
+    }
+
+    return { duplicate: true, id: concurrentDuplicateId };
   };
 }

@@ -3,7 +3,9 @@ import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 
 import type { CommitmentCandidate } from '../../src/domain/extraction.js';
 import { createAnalyzeGroupMessage } from '../../src/services/analyze-message.js';
+import { createSuggestion } from '../../src/services/create-suggestion.js';
 import { chatMemberships, commitmentSuggestions, commitments } from '../../src/db/schema.js';
+import { createMessagesRepository } from '../../src/repositories/messages.js';
 import { createConnectChat } from '../../src/services/connect-chat.js';
 import { createOnboardingInvitationService } from '../../src/services/onboarding-invitation.js';
 import { createGroupUpdateHandler } from '../../src/telegram/handlers/group.js';
@@ -84,7 +86,7 @@ describe('suggestions', () => {
         return Promise.resolve();
       },
       sendClarificationRequest: () => Promise.resolve(),
-    });
+    }, 'callback-test-secret');
 
     await expect(analyzer(createMessage(1))).resolves.toBe('suggested');
 
@@ -97,9 +99,9 @@ describe('suggestions', () => {
     ]);
     expect(replies[0]?.replyMarkup.inline_keyboard.flat().map((button) => button.callback_data)).toEqual(
       expect.arrayContaining([
-        expect.stringMatching(/^kw:confirm:[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/),
-        expect.stringMatching(/^kw:edit:[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/),
-        expect.stringMatching(/^kw:reject:[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/),
+        expect.stringMatching(/^kw:confirm:[0-9a-f-]{36}:[A-Za-z0-9_-]{16}$/),
+        expect.stringMatching(/^kw:edit:[0-9a-f-]{36}:[A-Za-z0-9_-]{16}$/),
+        expect.stringMatching(/^kw:reject:[0-9a-f-]{36}:[A-Za-z0-9_-]{16}$/),
       ]),
     );
     expect(await countSuggestions()).toBe(1);
@@ -116,7 +118,7 @@ describe('suggestions', () => {
         return Promise.resolve();
       },
       sendClarificationRequest: () => Promise.resolve(),
-    });
+    }, 'callback-test-secret');
 
     await expect(lowAnalyzer(createMessage(2))).resolves.toBe('skipped');
 
@@ -156,7 +158,7 @@ describe('suggestions', () => {
         return Promise.resolve();
       },
       sendClarificationRequest: () => Promise.resolve(),
-    });
+    }, 'callback-test-secret');
 
     await expect(duplicateAnalyzer(createMessage(3))).resolves.toBe('skipped');
     expect(replies).toHaveLength(0);
@@ -178,7 +180,7 @@ describe('suggestions', () => {
         clarifications.push(request.text);
         return Promise.resolve();
       },
-    });
+    }, 'callback-test-secret');
 
     await expect(analyzer(createMessage(4))).resolves.toBe('clarification-requested');
 
@@ -186,11 +188,98 @@ describe('suggestions', () => {
     expect(await countSuggestions()).toBe(1);
   });
 
+  test('does not suggest when the extracted due-date text is blank', async () => {
+    await connectTestChat();
+    const suggestionsBefore = await countSuggestions();
+    const analyzer = createAnalyzeGroupMessage(database.db, {
+      extractCandidate: (input) =>
+        Promise.resolve({
+          ...highConfidenceCandidate,
+          due_date_text: '   ',
+          needs_due_date_clarification: false,
+          source_message_ids: [input.message.id],
+        }),
+    }, {
+      sendSuggestionReply: () => Promise.resolve(),
+      sendClarificationRequest: () => Promise.resolve(),
+    }, 'callback-test-secret');
+
+    await expect(analyzer(createMessage(41))).resolves.toBe('skipped');
+    expect(await countSuggestions()).toBe(suggestionsBefore);
+  });
+
+  test('creates one pending suggestion when normalized duplicate requests race', async () => {
+    const connectedChat = await connectTestChat();
+    const messages = createMessagesRepository(database.db);
+    const sourceMessages = await Promise.all([
+      messages.persistCandidateSourceMessage({
+        author: { firstName: 'Daniyar', telegramUserId: 8101 },
+        chatId: connectedChat.chatId,
+        sentAt: new Date('2026-07-18T09:01:00.000Z'),
+        telegramMessageId: 51,
+        text: 'Сегодня отправлю КП клиенту',
+        workspaceId: connectedChat.workspaceId,
+      }),
+      messages.persistCandidateSourceMessage({
+        author: { firstName: 'Daniyar', telegramUserId: 8101 },
+        chatId: connectedChat.chatId,
+        sentAt: new Date('2026-07-18T09:02:00.000Z'),
+        telegramMessageId: 52,
+        text: 'Сегодня отправлю КП клиенту',
+        workspaceId: connectedChat.workspaceId,
+      }),
+    ]);
+    const membershipRows = await database.db
+      .select({ userId: chatMemberships.userId })
+      .from(chatMemberships)
+      .where(
+        and(
+          eq(chatMemberships.chatId, connectedChat.chatId),
+          eq(chatMemberships.workspaceId, connectedChat.workspaceId),
+        ),
+      )
+      .limit(1);
+    const membership = membershipRows[0];
+    if (!membership) {
+      throw new Error('Expected test chat admin membership');
+    }
+    const createPendingSuggestion = createSuggestion(database.db);
+    const input = {
+      assigneeUserId: membership.userId,
+      chatId: connectedChat.chatId,
+      confidence: 'high',
+      description: null,
+      dueAt: null,
+      dueDateText: 'сегодня',
+      needsAssigneeClarification: false,
+      needsDueDateClarification: false,
+      title: 'Отправить КП клиенту',
+      workspaceId: connectedChat.workspaceId,
+    };
+
+    const results = await Promise.all([
+      createPendingSuggestion({ ...input, sourceMessageId: sourceMessages[0].id }),
+      createPendingSuggestion({ ...input, sourceMessageId: sourceMessages[1].id, title: '  отправить   КП клиенту  ' }),
+    ]);
+    const rows = await database.db
+      .select()
+      .from(commitmentSuggestions)
+      .where(
+        and(
+          eq(commitmentSuggestions.workspaceId, connectedChat.workspaceId),
+          eq(commitmentSuggestions.chatId, connectedChat.chatId),
+        ),
+      );
+
+    expect(results.filter((result) => !result.duplicate)).toHaveLength(1);
+    expect(rows).toHaveLength(1);
+  });
+
   test('routes a new group message to the analyzer and replies through fake Telegram', async () => {
     await connectTestChat();
     const analyzer = createAnalyzeGroupMessage(database.db, {
       extractCandidate: (input) => Promise.resolve({ ...highConfidenceCandidate, source_message_ids: [input.message.id] }),
-    }, undefined);
+    }, undefined, 'callback-test-secret');
     const handler = createGroupUpdateHandler({
       analyzeGroupMessage: analyzer,
       botUsername: 'keepword_test_bot',

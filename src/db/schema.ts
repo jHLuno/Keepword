@@ -9,8 +9,10 @@ import {
   time,
   timestamp,
   unique,
+  uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 
 export const commitmentStatus = pgEnum('commitment_status', [
   'open',
@@ -152,6 +154,7 @@ export const commitmentSuggestions = pgTable(
     chatId: uuid('chat_id').notNull(),
     sourceMessageId: uuid('source_message_id').notNull(),
     title: text('title').notNull(),
+    normalizedTitle: text('normalized_title').notNull(),
     description: text('description'),
     assigneeUserId: uuid('assignee_user_id'),
     dueAt: timestamp('due_at', { withTimezone: true }),
@@ -170,6 +173,9 @@ export const commitmentSuggestions = pgTable(
       table.status,
     ),
     index('commitment_suggestions_chat_assignee_due_idx').on(table.chatId, table.assigneeUserId, table.dueAt),
+    uniqueIndex('commitment_suggestions_pending_normalized_unique')
+      .on(table.workspaceId, table.chatId, table.assigneeUserId, table.normalizedTitle)
+      .where(sql`${table.status} = 'pending' and ${table.assigneeUserId} is not null`),
     foreignKey({
       name: 'commitment_suggestions_chat_workspace_fkey',
       columns: [table.chatId, table.workspaceId],

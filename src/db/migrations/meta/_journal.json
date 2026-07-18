@@ -22,6 +22,13 @@
       "when": 1784387000000,
       "tag": "0002_onboarding_delivery_state",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1784388000000,
+      "tag": "0003_atomic_suggestions",
+      "breakpoints": true
     }
   ]
 }

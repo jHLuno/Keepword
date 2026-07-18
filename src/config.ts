@@ -1,4 +1,5 @@
 export type AppConfig = Readonly<{
+  callbackSigningSecret: string;
   telegramBotToken: string;
   telegramBotUsername: string;
   telegramWebhookSecret: string;
@@ -9,6 +10,7 @@ export type AppConfig = Readonly<{
 }>;
 
 const requiredEnvironmentVariables = [
+  'CALLBACK_SIGNING_SECRET',
   'TELEGRAM_BOT_TOKEN',
   'TELEGRAM_BOT_USERNAME',
   'TELEGRAM_WEBHOOK_SECRET',
@@ -25,6 +27,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
   }
 
   return {
+    callbackSigningSecret: env.CALLBACK_SIGNING_SECRET!,
     telegramBotToken: env.TELEGRAM_BOT_TOKEN!,
     telegramBotUsername: env.TELEGRAM_BOT_USERNAME!,
     telegramWebhookSecret: env.TELEGRAM_WEBHOOK_SECRET!,

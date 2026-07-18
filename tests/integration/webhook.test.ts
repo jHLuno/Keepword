@@ -48,6 +48,7 @@ function buildWebhookApp(options?: FakeTelegramOptions) {
   const fakeTelegram = createFakeTelegram(options);
   const app = buildApp(
     {
+      callbackSigningSecret: 'callback-test-secret',
       databaseUrl: 'postgres://unused/test',
       openAiApiKey: 'unused',
       port: 3_000,

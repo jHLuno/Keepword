@@ -32,14 +32,14 @@ export type ActiveDuplicateInput = Readonly<{
   workspaceId: string;
 }>;
 
-function normalizeTitle(title: string): string {
+export function normalizeSuggestionTitle(title: string): string {
   return title.trim().toLocaleLowerCase().replace(/\s+/g, ' ');
 }
 
 export type CommitmentsRepository = Readonly<{
   createPendingSuggestion: (
     input: PendingSuggestionInput,
-  ) => Promise<typeof commitmentSuggestions.$inferSelect>;
+  ) => Promise<typeof commitmentSuggestions.$inferSelect | null>;
   findActiveDuplicate: (input: ActiveDuplicateInput) => Promise<string | null>;
   findScopedCommitment: (input: ScopedCommitmentInput) => Promise<typeof commitments.$inferSelect | null>;
   findPendingSuggestionForSource: (input: Readonly<{
@@ -65,18 +65,15 @@ export function createCommitmentsRepository<TQueryResult extends PgQueryResultHK
           dueDateText: input.dueDateText,
           needsAssigneeClarification: input.needsAssigneeClarification,
           needsDueDateClarification: input.needsDueDateClarification,
+          normalizedTitle: normalizeSuggestionTitle(input.title),
           sourceMessageId: input.sourceMessageId,
           title: input.title,
           workspaceId: input.workspaceId,
         })
+        .onConflictDoNothing()
         .returning();
 
-      const suggestion = rows[0];
-      if (!suggestion) {
-        throw new Error('Expected a created pending suggestion');
-      }
-
-      return suggestion;
+      return rows[0] ?? null;
     },
 
     async findActiveDuplicate(input) {
@@ -108,9 +105,11 @@ export function createCommitmentsRepository<TQueryResult extends PgQueryResultHK
             ),
           ),
       ]);
-      const normalizedTitle = normalizeTitle(input.title);
+      const normalizedTitle = normalizeSuggestionTitle(input.title);
       const duplicate = [...openCommitments, ...pendingSuggestions].find(
-        (candidate) => candidate.assigneeUserId === input.assigneeUserId && normalizeTitle(candidate.title) === normalizedTitle,
+        (candidate) =>
+          candidate.assigneeUserId === input.assigneeUserId &&
+          normalizeSuggestionTitle(candidate.title) === normalizedTitle,
       );
 
       return duplicate?.id ?? null;

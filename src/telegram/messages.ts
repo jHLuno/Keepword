@@ -1,4 +1,4 @@
-import { createHmac, randomBytes } from 'node:crypto';
+import { createHmac } from 'node:crypto';
 
 export type InlineKeyboardMarkup = Readonly<{
   inline_keyboard: InlineKeyboardButton[][];
@@ -11,34 +11,43 @@ export type InlineKeyboardButton = Readonly<{
 
 export type SuggestionCard = Readonly<{
   dueDateText: string | null;
+  id: string;
   title: string;
 }>;
 
-const callbackSigningKey = randomBytes(32);
+type SuggestionAction = 'confirm' | 'edit' | 'reject';
 
-function createSignedCallback(action: 'confirm' | 'edit' | 'reject'): string {
-  const nonce = randomBytes(9).toString('base64url');
-  const signature = createHmac('sha256', callbackSigningKey)
-    .update(`${action}:${nonce}`)
+function createSignedCallback(action: SuggestionAction, suggestionId: string, callbackSigningSecret: string): string {
+  const signature = createHmac('sha256', callbackSigningSecret)
+    .update(`v1:${action}:${suggestionId}`)
     .digest('base64url')
     .slice(0, 16);
+  const callbackData = `kw:${action}:${suggestionId}:${signature}`;
 
-  return `kw:${action}:${nonce}.${signature}`;
+  if (Buffer.byteLength(callbackData, 'utf8') > 64) {
+    throw new Error('Suggestion callback data exceeds Telegram\'s 64-byte limit');
+  }
+
+  return callbackData;
 }
 
-export function renderSuggestion(suggestion: SuggestionCard): Readonly<{
+export function renderSuggestion(
+  suggestion: SuggestionCard,
+  callbackSigningSecret: string,
+): Readonly<{
   replyMarkup: InlineKeyboardMarkup;
   text: string;
 }> {
-  const dueLine = suggestion.dueDateText ? `\nСрок: ${suggestion.dueDateText}` : '';
+  const dueDateText = suggestion.dueDateText?.trim();
+  const dueLine = dueDateText ? `\nСрок: ${dueDateText}` : '';
 
   return {
     replyMarkup: {
       inline_keyboard: [
         [
-          { callback_data: createSignedCallback('confirm'), text: 'Подтвердить' },
-          { callback_data: createSignedCallback('edit'), text: 'Изменить' },
-          { callback_data: createSignedCallback('reject'), text: 'Не фиксировать' },
+          { callback_data: createSignedCallback('confirm', suggestion.id, callbackSigningSecret), text: 'Подтвердить' },
+          { callback_data: createSignedCallback('edit', suggestion.id, callbackSigningSecret), text: 'Изменить' },
+          { callback_data: createSignedCallback('reject', suggestion.id, callbackSigningSecret), text: 'Не фиксировать' },
         ],
       ],
     },
