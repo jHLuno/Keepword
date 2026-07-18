@@ -178,6 +178,7 @@ export function createSendDigest<TQueryResult extends PgQueryResultHKT>(input: R
       return claim;
     }
     try {
+      await deliveries.markSending(digest.idempotencyKey);
       await input.messenger.sendPrivateMessage({ telegramUserId: digest.telegramUserId, text: digest.text });
     } catch {
       await deliveries.recordFailure(digest.idempotencyKey, 'TELEGRAM_SEND_FAILED');

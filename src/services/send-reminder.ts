@@ -67,6 +67,7 @@ export function createSendReminder<TQueryResult extends PgQueryResultHKT>(input:
         complete: nonces.complete,
         reschedule: nonces.reschedule,
       }, input.callbackSigningSecret);
+      await deliveries.markSending(reminder.idempotencyKey);
       await input.messenger.sendPrivateMessage({
         replyMarkup: card.replyMarkup,
         telegramUserId: reminder.assigneeTelegramUserId,

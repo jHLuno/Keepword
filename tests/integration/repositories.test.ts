@@ -194,6 +194,92 @@ describe('repositories', () => {
     );
   });
 
+  test('recovers a stale claim before send starts but keeps the new claim exclusive', async () => {
+    const fixture = await createCommitmentFixture();
+    const deliveryKey = `stale-reminder-${fixture.commitmentId}`;
+    const deliveries = createDeliveriesRepository(database.db);
+
+    await database.db.insert(notificationDeliveries).values({
+      chatId: fixture.chatId,
+      commitmentId: fixture.commitmentId,
+      idempotencyKey: deliveryKey,
+      kind: 'reminder',
+      status: 'claimed',
+      updatedAt: new Date('2020-01-01T00:00:00.000Z'),
+      userId: fixture.userId,
+      workspaceId: fixture.workspaceId,
+    });
+
+    await expect(deliveries.createAndClaimDelivery({
+      chatId: fixture.chatId,
+      commitmentId: fixture.commitmentId,
+      idempotencyKey: deliveryKey,
+      kind: 'reminder',
+      userId: fixture.userId,
+      workspaceId: fixture.workspaceId,
+    })).resolves.toBe('claimed');
+    await expect(deliveries.createAndClaimDelivery({
+      chatId: fixture.chatId,
+      commitmentId: fixture.commitmentId,
+      idempotencyKey: deliveryKey,
+      kind: 'reminder',
+      userId: fixture.userId,
+      workspaceId: fixture.workspaceId,
+    })).resolves.toBe('in-progress');
+  });
+
+  test('does not recover a stale processing delivery because Telegram may have accepted it', async () => {
+    const fixture = await createCommitmentFixture();
+    const deliveryKey = `uncertain-reminder-${fixture.commitmentId}`;
+    const deliveries = createDeliveriesRepository(database.db);
+
+    await database.db.insert(notificationDeliveries).values({
+      chatId: fixture.chatId,
+      commitmentId: fixture.commitmentId,
+      idempotencyKey: deliveryKey,
+      kind: 'reminder',
+      status: 'processing',
+      updatedAt: new Date('2020-01-01T00:00:00.000Z'),
+      userId: fixture.userId,
+      workspaceId: fixture.workspaceId,
+    });
+
+    await expect(deliveries.createAndClaimDelivery({
+      chatId: fixture.chatId,
+      commitmentId: fixture.commitmentId,
+      idempotencyKey: deliveryKey,
+      kind: 'reminder',
+      userId: fixture.userId,
+      workspaceId: fixture.workspaceId,
+    })).resolves.toBe('in-progress');
+  });
+
+  test('releases a claim immediately when send setup fails before Telegram starts', async () => {
+    const fixture = await createCommitmentFixture();
+    const deliveryKey = `setup-failure-${fixture.commitmentId}`;
+    const deliveries = createDeliveriesRepository(database.db);
+
+    await database.db.insert(notificationDeliveries).values({
+      chatId: fixture.chatId,
+      commitmentId: fixture.commitmentId,
+      idempotencyKey: deliveryKey,
+      kind: 'reminder',
+      status: 'claimed',
+      userId: fixture.userId,
+      workspaceId: fixture.workspaceId,
+    });
+    await deliveries.recordFailure(deliveryKey, 'SETUP_FAILED');
+
+    await expect(deliveries.createAndClaimDelivery({
+      chatId: fixture.chatId,
+      commitmentId: fixture.commitmentId,
+      idempotencyKey: deliveryKey,
+      kind: 'reminder',
+      userId: fixture.userId,
+      workspaceId: fixture.workspaceId,
+    })).resolves.toBe('claimed');
+  });
+
   test('does not reclaim a sent delivery', async () => {
     const fixture = await createCommitmentFixture();
     const deliveryKey = `digest-${fixture.commitmentId}`;

@@ -54,3 +54,17 @@
 - Personal item filtering is by server-side assignee user ID within the chat scope.
 - Admin digests contain aggregate counts and task titles only; no user notification, connection, or delivery metadata is rendered.
 - Telegram messages are sent only after a durable delivery claim; a successfully marked delivery is not re-sent for the same local day.
+
+## P1 — at-most-once stale-claim recovery
+
+- Delivery now has an explicit pre-send `claimed` state. A claim becomes `processing` immediately before the Telegram call.
+- Claims older than five minutes are safely reclaimed because the external send has not started. A `processing` delivery is never auto-reclaimed, even if stale: Telegram may have accepted it before the process lost the sent-state write.
+- Setup failures before `markSending` return the durable claim to `failed`, allowing an immediate safe retry. A normal failed Telegram call retains the existing failed-delivery retry behavior.
+- `tests/integration/repositories.test.ts` proves stale pre-send claim recovery, sequential claim exclusivity, immediate setup-failure release, and the non-retry policy for stale post-send uncertainty. Existing reminder coverage proves a successful first delivery is not duplicated by a sequential job run.
+
+### P1 TDD and verification
+
+1. Red: stale `claimed` delivery returned `in-progress` instead of a recoverable `claimed` result.
+2. Green: the delivery repository separates `claimed` from `processing`; the targeted repository, reminder, and digest suites pass 18 tests.
+3. A second red test caught that pre-send setup failures left a `claimed` row stranded; `recordFailure` now accepts both pre-send and send-started states while `markSent` remains restricted to `processing`.
+4. `pnpm typecheck` and `pnpm lint` pass after the fix.
