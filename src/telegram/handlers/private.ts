@@ -152,8 +152,8 @@ export function createPrivateUpdateHandler<TQueryResult extends PgQueryResultHKT
         }
         return;
       }
-      const dueMatch = /^due:\s*(.+)$/i.exec(message.text.trim());
-      if (!dueMatch?.[1]) {
+      const newDeadline = message.text.trim().replace(/^due:\s*/i, '').trim();
+      if (newDeadline.length === 0) {
         await messenger.sendPrivateMessage({
           telegramUserId: message.from.id,
           text: strings.rescheduleUsage,
@@ -163,7 +163,7 @@ export function createPrivateUpdateHandler<TQueryResult extends PgQueryResultHKT
       try {
         await reschedules.apply({
           actor: { firstName: message.from.first_name, telegramUserId: message.from.id },
-          dueDateText: dueMatch[1],
+          dueDateText: newDeadline,
         });
         await messenger.sendPrivateMessage({ telegramUserId: message.from.id, text: strings.rescheduleSaved });
       } catch (error: unknown) {

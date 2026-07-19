@@ -66,6 +66,7 @@ type Strings = Readonly<{
   toastCommitmentRejected: string;
   promptReschedule: string;
   promptEdit: string;
+  editInstructions: string;
   suggestionHeading: string;
   privateSuggestionHeading: string;
   dueLabel: string;
@@ -183,8 +184,17 @@ const catalog: Record<Locale, Strings> = {
     toastCommitmentSaved: 'Commitment saved.',
     feedbackCommitmentSaved: '✅ Commitment saved.',
     toastCommitmentRejected: 'The commitment will not be saved.',
-    promptReschedule: 'Open a private chat with Keepword and send due: <future ISO deadline with timezone>.',
-    promptEdit: 'Open a private chat with Keepword and send the title, description, or due fields.',
+    promptReschedule: 'In your private chat with Keepword, send the new deadline — e.g. "today 22:00", "tomorrow 18:00", or "2026-07-20 22:00".',
+    promptEdit: 'In your private chat with Keepword, send e.g. "due: tomorrow 18:00" or "title: New title" — one field per line.',
+    editInstructions: [
+      'To edit, send the changed fields in this chat, one per line:',
+      '',
+      'title: New title',
+      'due: tomorrow 18:00   (or "friday", "2026-07-20 22:00")',
+      'description: extra details   (send "-" to clear)',
+      '',
+      'You can send just one line.',
+    ].join('\n'),
     suggestionHeading: '📌 Keepword spotted a commitment',
     privateSuggestionHeading: '📌 I found a commitment',
     dueLabel: 'Due',
@@ -242,9 +252,9 @@ const catalog: Record<Locale, Strings> = {
     keepUsage: 'Reply /keep to a message that contains a commitment.',
     notificationsAdminOnly: 'Only a chat administrator can manage notifications.',
     manualCaptureConnectFirst: 'Connect notifications for one group to save this commitment.',
-    rescheduleUsage: 'Provide a future deadline as due: <ISO timestamp with timezone>.',
+    rescheduleUsage: 'Send the new deadline, e.g. "today 22:00", "tomorrow 18:00", "friday", or "2026-07-20 22:00".',
     rescheduleSaved: 'New deadline saved.',
-    rescheduleFailed: 'Could not reschedule. Open the card again.',
+    rescheduleFailed: 'Could not read that deadline. Send a future time like "today 22:00", "tomorrow 18:00", or "2026-07-20 22:00".',
     editSaved: 'Changes saved. Confirm the card in the group.',
     editFailed: 'Could not apply the changes. Open the card again.',
     privateHelp: [
@@ -314,8 +324,17 @@ const catalog: Record<Locale, Strings> = {
     toastCommitmentSaved: 'Договорённость сохранена.',
     feedbackCommitmentSaved: '✅ Договорённость сохранена.',
     toastCommitmentRejected: 'Договорённость не будет сохранена.',
-    promptReschedule: 'Откройте личный чат с Keepword и отправьте due: <будущий ISO-срок с timezone>.',
-    promptEdit: 'Откройте личный чат с Keepword и отправьте поля title, description или due.',
+    promptReschedule: 'В личном чате с Keepword отправьте новый срок — например «сегодня 22:00», «завтра 18:00» или «2026-07-20 22:00».',
+    promptEdit: 'В личном чате с Keepword отправьте, например «due: завтра 18:00» или «title: Новый заголовок» — по одному полю в строке.',
+    editInstructions: [
+      'Чтобы изменить, отправьте нужные поля в этом чате, по одному в строке:',
+      '',
+      'title: Новый заголовок',
+      'due: завтра 18:00   (или «в пятницу», «2026-07-20 22:00»)',
+      'description: детали   (отправьте «-», чтобы очистить)',
+      '',
+      'Можно отправить только одну строку.',
+    ].join('\n'),
     suggestionHeading: '📌 Keepword заметил договорённость',
     privateSuggestionHeading: '📌 Я нашёл обязательство',
     dueLabel: 'Срок',
@@ -373,9 +392,9 @@ const catalog: Record<Locale, Strings> = {
     keepUsage: 'Ответьте командой /keep на сообщение с договорённостью.',
     notificationsAdminOnly: 'Только администратор чата может управлять уведомлениями.',
     manualCaptureConnectFirst: 'Подключите уведомления для одной группы, чтобы сохранить это обязательство.',
-    rescheduleUsage: 'Укажите будущий срок в формате due: <ISO timestamp с timezone>.',
+    rescheduleUsage: 'Отправьте новый срок, например «сегодня 22:00», «завтра 18:00», «в пятницу» или «2026-07-20 22:00».',
     rescheduleSaved: 'Новый срок сохранён.',
-    rescheduleFailed: 'Не удалось перенести срок. Откройте карточку заново.',
+    rescheduleFailed: 'Не понял срок. Отправьте будущее время, например «сегодня 22:00», «завтра 18:00» или «2026-07-20 22:00».',
     editSaved: 'Изменения сохранены. Подтвердите карточку в группе.',
     editFailed: 'Не удалось применить изменения. Откройте карточку заново.',
     privateHelp: [
@@ -445,8 +464,17 @@ const catalog: Record<Locale, Strings> = {
     toastCommitmentSaved: 'Compromiso guardado.',
     feedbackCommitmentSaved: '✅ Compromiso guardado.',
     toastCommitmentRejected: 'El compromiso no se guardará.',
-    promptReschedule: 'Abre un chat privado con Keepword y envía due: <fecha ISO futura con zona horaria>.',
-    promptEdit: 'Abre un chat privado con Keepword y envía los campos title, description o due.',
+    promptReschedule: 'En tu chat privado con Keepword envía la nueva fecha — p. ej. «hoy 22:00», «mañana 18:00» o «2026-07-20 22:00».',
+    promptEdit: 'En tu chat privado con Keepword envía p. ej. «due: mañana 18:00» o «title: Nuevo título» — un campo por línea.',
+    editInstructions: [
+      'Para editar, envía los campos cambiados en este chat, uno por línea:',
+      '',
+      'title: Nuevo título',
+      'due: mañana 18:00   (o «viernes», «2026-07-20 22:00»)',
+      'description: detalles   (envía «-» para borrar)',
+      '',
+      'Puedes enviar una sola línea.',
+    ].join('\n'),
     suggestionHeading: '📌 Keepword detectó un compromiso',
     privateSuggestionHeading: '📌 Encontré un compromiso',
     dueLabel: 'Fecha límite',
@@ -504,9 +532,9 @@ const catalog: Record<Locale, Strings> = {
     keepUsage: 'Responde /keep a un mensaje que contenga un compromiso.',
     notificationsAdminOnly: 'Solo un administrador del chat puede gestionar las notificaciones.',
     manualCaptureConnectFirst: 'Conecta las notificaciones de un grupo para guardar este compromiso.',
-    rescheduleUsage: 'Indica una fecha límite futura como due: <marca ISO con zona horaria>.',
+    rescheduleUsage: 'Envía la nueva fecha, p. ej. «hoy 22:00», «mañana 18:00», «viernes» o «2026-07-20 22:00».',
     rescheduleSaved: 'Nueva fecha límite guardada.',
-    rescheduleFailed: 'No se pudo reprogramar. Abre la tarjeta de nuevo.',
+    rescheduleFailed: 'No entendí la fecha. Envía una hora futura como «hoy 22:00», «mañana 18:00» o «2026-07-20 22:00».',
     editSaved: 'Cambios guardados. Confirma la tarjeta en el grupo.',
     editFailed: 'No se pudieron aplicar los cambios. Abre la tarjeta de nuevo.',
     privateHelp: [

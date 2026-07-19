@@ -4,9 +4,9 @@ import type { PgQueryResultHKT } from 'drizzle-orm/pg-core';
 import { chats, commitmentRescheduleSessions, commitments, suggestionEditSessions, users } from '../db/schema.js';
 import type { CurrentChatAdminChecker } from './authorize-action.js';
 import type { RepositoryDatabase } from '../repositories/database.js';
+import { resolveDueDate } from '../domain/relative-date.js';
 
 const sessionLifetimeMs = 15 * 60 * 1_000;
-const isoTimestampPattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2})$/;
 
 export class CommitmentRescheduleError extends Error {
   readonly code: 'RESCHEDULE_UNAVAILABLE' | 'UNAUTHORIZED';
@@ -62,11 +62,7 @@ export function createCommitmentRescheduleService<TQueryResult extends PgQueryRe
   return {
     async apply(input) {
       const dueDateText = input.dueDateText.trim();
-      if (dueDateText.length === 0 || dueDateText.length > 100 || !isoTimestampPattern.test(dueDateText)) {
-        throw new CommitmentRescheduleError('RESCHEDULE_UNAVAILABLE');
-      }
-      const dueAt = new Date(dueDateText);
-      if (Number.isNaN(dueAt.getTime()) || dueAt.getTime() <= Date.now()) {
+      if (dueDateText.length === 0 || dueDateText.length > 100) {
         throw new CommitmentRescheduleError('RESCHEDULE_UNAVAILABLE');
       }
       return database.transaction(async (transaction) => {
@@ -86,7 +82,12 @@ export function createCommitmentRescheduleService<TQueryResult extends PgQueryRe
           throw new CommitmentRescheduleError('RESCHEDULE_UNAVAILABLE');
         }
         const commitmentRows = await transaction
-          .select({ assigneeTelegramUserId: users.telegramUserId, commitment: commitments, telegramChatId: chats.telegramChatId })
+          .select({
+            assigneeTelegramUserId: users.telegramUserId,
+            commitment: commitments,
+            telegramChatId: chats.telegramChatId,
+            timezone: chats.timezone,
+          })
           .from(commitments)
           .innerJoin(chats, and(eq(commitments.chatId, chats.id), eq(commitments.workspaceId, chats.workspaceId)))
           .leftJoin(users, eq(commitments.assigneeUserId, users.id))
@@ -107,6 +108,12 @@ export function createCommitmentRescheduleService<TQueryResult extends PgQueryRe
         }
         const commitment = commitmentScope.commitment;
         if (commitment.status !== 'open' && commitment.status !== 'overdue') {
+          throw new CommitmentRescheduleError('RESCHEDULE_UNAVAILABLE');
+        }
+        // Accept an exact ISO timestamp or a natural phrase ("tomorrow 18:00",
+        // "сегодня 22:00", "к вечеру", a weekday), resolved in the chat's time zone.
+        const dueAt = resolveDueDate(dueDateText, new Date(), commitmentScope.timezone);
+        if (!dueAt || Number.isNaN(dueAt.getTime()) || dueAt.getTime() <= Date.now()) {
           throw new CommitmentRescheduleError('RESCHEDULE_UNAVAILABLE');
         }
         const claimed = await transaction

@@ -57,7 +57,7 @@ test('reschedules an overdue commitment only for its assignee and reopens it wit
     .resolves.toMatchObject({ dueDateText: futureDueAt, dueAt: new Date(futureDueAt), status: 'open' });
 });
 
-test('rejects a reschedule due time that is not a future ISO timestamp', async () => {
+test('accepts a natural relative deadline and rejects an unresolvable one', async () => {
   const chat = await createConnectChat(database.db)({
     adminTelegramUserId: '9303',
     telegramChatId: '-1009303',
@@ -72,10 +72,18 @@ test('rejects a reschedule due time that is not a future ISO timestamp', async (
   }).returning())[0];
   if (!commitment) throw new Error('Expected commitment');
   const service = createCommitmentRescheduleService(database.db, () => Promise.resolve(false));
-  await service.begin({ actorTelegramUserId: 9303, commitmentId: commitment.id, telegramChatId: '-1009303' });
 
-  await expect(service.apply({ actor: { firstName: 'Daniyar', telegramUserId: 9303 }, dueDateText: 'завтра' }))
+  // An unresolvable phrase is rejected without consuming the session.
+  await service.begin({ actorTelegramUserId: 9303, commitmentId: commitment.id, telegramChatId: '-1009303' });
+  await expect(service.apply({ actor: { firstName: 'Daniyar', telegramUserId: 9303 }, dueDateText: 'как-нибудь потом' }))
     .rejects.toMatchObject({ code: 'RESCHEDULE_UNAVAILABLE' });
+
+  // A relative phrase resolves to a concrete future dueAt and reopens the commitment.
+  const result = await service.apply({ actor: { firstName: 'Daniyar', telegramUserId: 9303 }, dueDateText: 'завтра 18:00' });
+  expect(result.status).toBe('open');
+  expect(result.dueDateText).toBe('завтра 18:00');
+  expect(result.dueAt).not.toBeNull();
+  expect(result.dueAt!.getTime()).toBeGreaterThan(Date.now());
 });
 
 test('supersedes an earlier reschedule session for the same Telegram actor', async () => {

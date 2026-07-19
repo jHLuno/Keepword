@@ -88,6 +88,16 @@ function createGrammYCallbackMessenger(context: Context): CallbackMessenger {
     async sendActionFeedback(input) {
       await context.api.sendMessage(Number(input.telegramChatId), input.text);
     },
+
+    async sendPrivatePrompt(input) {
+      // Best-effort: the user may not have started the bot privately yet, in which
+      // case the toast already told them to open the private chat.
+      try {
+        await context.api.sendMessage(input.telegramUserId, input.text);
+      } catch {
+        // Ignore: a missing private chat must not fail the callback.
+      }
+    },
   };
 }
 

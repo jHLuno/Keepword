@@ -13,8 +13,12 @@
 const DEFAULT_HOUR = 9;
 const EVENING_HOUR = 18;
 
-const isoDatePattern = /\d{4}-\d{2}-\d{2}/;
-const explicitTimePattern = /\b([01]?\d|2[0-3])[:.]([0-5]\d)\b/;
+// Explicit calendar date "YYYY-MM-DD" with an optional "T"/space "HH:MM".
+const explicitDatePattern = /(\d{4})-(\d{2})-(\d{2})(?:[ t](\d{1,2}):(\d{2}))?/i;
+// An explicit UTC/offset suffix means the string is an absolute instant.
+const explicitOffsetPattern = /(?:z|[+-]\d{2}:\d{2})\s*$/i;
+// A time of day in a relative phrase; the separator may be ":", "." or a space.
+const explicitTimePattern = /\b([01]?\d|2[0-3])[:.\s]([0-5]\d)\b/;
 
 // Weekday stems by JS getDay() index (0 = Sunday … 6 = Saturday).
 const weekdayStems: readonly (readonly string[])[] = [
@@ -113,16 +117,27 @@ export function resolveDueDate(text: string | null | undefined, reference: Date,
   if (trimmed.length === 0) {
     return null;
   }
+  const normalized = trimmed.toLowerCase();
+  const hasEveningCue = includesAny(normalized, eveningCues);
 
-  // Explicit ISO date or date-time.
-  if (isoDatePattern.test(trimmed)) {
-    const parsed = Date.parse(trimmed);
-    if (!Number.isNaN(parsed)) {
-      return new Date(parsed);
+  // Explicit calendar date. With an offset it is an absolute instant; otherwise
+  // its wall clock is interpreted in the chat's time zone.
+  const explicitDate = explicitDatePattern.exec(trimmed);
+  if (explicitDate) {
+    if (explicitOffsetPattern.test(trimmed)) {
+      const parsed = Date.parse(trimmed);
+      if (!Number.isNaN(parsed)) {
+        return new Date(parsed);
+      }
     }
+    const hour = explicitDate[4] !== undefined ? Number(explicitDate[4]) : (hasEveningCue ? EVENING_HOUR : DEFAULT_HOUR);
+    const minute = explicitDate[5] !== undefined ? Number(explicitDate[5]) : 0;
+    if (hour > 23 || minute > 59) {
+      return null;
+    }
+    return zonedWallClockToUtc(Number(explicitDate[1]), Number(explicitDate[2]), Number(explicitDate[3]), hour, minute, timeZone);
   }
 
-  const normalized = trimmed.toLowerCase();
   const referenceParts = zonedDateParts(reference, timeZone);
   if (!referenceParts) {
     return null;
@@ -132,7 +147,6 @@ export function resolveDueDate(text: string | null | undefined, reference: Date,
   let hour = DEFAULT_HOUR;
   let minute = 0;
   const explicitTime = explicitTimePattern.exec(normalized);
-  const hasEveningCue = includesAny(normalized, eveningCues);
   if (explicitTime) {
     hour = Number(explicitTime[1]);
     minute = Number(explicitTime[2]);

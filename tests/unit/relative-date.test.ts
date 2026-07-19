@@ -34,8 +34,15 @@ describe('resolveDueDate', () => {
     expect(iso('завтра', 'Asia/Almaty')).toBe('2026-07-20T04:00:00.000Z');
   });
 
-  test('passes through explicit ISO date-times', () => {
+  test('accepts a space between hours and minutes', () => {
+    expect(iso('22 00', 'UTC')).toBe('2026-07-19T22:00:00.000Z');
+  });
+
+  test('treats an explicit ISO offset as absolute and a bare date-time as chat-local', () => {
     expect(iso('2026-08-01T10:00:00Z', 'UTC')).toBe('2026-08-01T10:00:00.000Z');
+    expect(iso('2026-07-20T22:00:00+05:00', 'UTC')).toBe('2026-07-20T17:00:00.000Z');
+    // No offset: the wall clock is interpreted in the chat time zone (UTC+5).
+    expect(iso('2026-07-20 22:00', 'Asia/Almaty')).toBe('2026-07-20T17:00:00.000Z');
   });
 
   test('returns null for phrases without a resolvable day', () => {

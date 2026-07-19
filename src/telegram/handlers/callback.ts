@@ -56,7 +56,7 @@ export type CallbackMessenger = Readonly<{
     telegramMessageId: string;
     text: string;
   }>) => Promise<void>;
-  sendPrivateEditPrompt?: (input: Readonly<{ telegramUserId: number }>) => Promise<void>;
+  sendPrivatePrompt?: (input: Readonly<{ telegramUserId: number; text: string }>) => Promise<void>;
   sendActionFeedback?: (input: Readonly<{ telegramChatId: string; text: string }>) => Promise<void>;
 }>;
 
@@ -175,6 +175,7 @@ export function createCommitmentActionCallbackHandler<TQueryResult extends PgQue
             callbackQueryId: callback.id,
             text: strings.promptReschedule,
           });
+          await messenger.sendPrivatePrompt?.({ telegramUserId, text: strings.promptReschedule });
           return;
         }
         if (
@@ -244,7 +245,7 @@ export function createCommitmentActionCallbackHandler<TQueryResult extends PgQue
           callbackQueryId: callback.id,
           text: strings.promptEdit,
         });
-        await messenger.sendPrivateEditPrompt?.({ telegramUserId });
+        await messenger.sendPrivatePrompt?.({ telegramUserId, text: strings.editInstructions });
         return;
       }
       if (signedCallback.action !== 'confirm' && signedCallback.action !== 'reject') {
