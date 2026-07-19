@@ -67,7 +67,7 @@ async function createFixture(): Promise<DigestFixture> {
     timezone: 'Asia/Almaty',
     title: 'Digest test',
   });
-  await database.db.update(chats).set({ dailyDigestTime: '18:00:00' }).where(eq(chats.id, chat.chatId));
+  await database.db.update(chats).set({ dailyDigestTime: '18:00:00', language: 'ru' }).where(eq(chats.id, chat.chatId));
   const owner = (await database.db
     .select({ id: users.id, telegramUserId: users.telegramUserId })
     .from(users)
@@ -201,6 +201,7 @@ async function addSameWorkspaceChat(fixture: DigestFixture): Promise<Readonly<{ 
   nextTelegramChatId += 1;
   const chat = (await database.db.insert(chats).values({
     dailyDigestTime: '18:00:00',
+    language: 'ru',
     telegramChatId: nextTelegramChatId,
     timezone: 'Asia/Almaty',
     title: 'Second digest test',

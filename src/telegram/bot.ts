@@ -1,5 +1,7 @@
 import { Bot, type Context } from 'grammy';
 import type { Update } from 'grammy/types';
+import { autoRetry } from '@grammyjs/auto-retry';
+import { apiThrottler } from '@grammyjs/transformer-throttler';
 
 import type { GroupMessenger, GroupUpdateHandler, OnboardingCard } from './handlers/group.js';
 import type { CallbackMessenger, CommitmentActionCallbackHandler } from './handlers/callback.js';
@@ -36,7 +38,7 @@ function createGrammYMessenger(context: Context): GroupMessenger {
     async sendOnboardingCard(card: OnboardingCard) {
       await context.api.sendMessage(Number(card.telegramChatId), card.text, {
         reply_markup: {
-          inline_keyboard: [[{ text: '🔔 Подключить уведомления', url: card.onboardingDeepLink }]],
+          inline_keyboard: [[{ text: card.buttonText, url: card.onboardingDeepLink }]],
         },
       });
     },
@@ -44,7 +46,7 @@ function createGrammYMessenger(context: Context): GroupMessenger {
     async sendNotificationInvite(invite) {
       await context.api.sendMessage(Number(invite.telegramChatId), invite.text, {
         reply_markup: {
-          inline_keyboard: [[{ text: 'Подключить уведомления', url: invite.onboardingDeepLink }]],
+          inline_keyboard: [[{ text: invite.buttonText, url: invite.onboardingDeepLink }]],
         },
       });
     },
@@ -112,6 +114,11 @@ export function createTelegramBot(input: Readonly<{
   token: string;
 }>): TelegramAdapter {
   const bot = new Bot<Context>(input.token);
+  // Respect Telegram's global (~30 msg/s) and per-chat rate limits: the
+  // throttler queues outgoing API calls, and auto-retry honours 429
+  // `retry_after` so bursts of reminders or digests are never dropped.
+  bot.api.config.use(apiThrottler());
+  bot.api.config.use(autoRetry({ maxDelaySeconds: 60, maxRetryAttempts: 5 }));
   let initialization: Promise<void> | undefined;
 
   function initialize(): Promise<void> {

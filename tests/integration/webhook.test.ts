@@ -21,7 +21,7 @@ const botAddedToGroupUpdate = {
       type: 'supergroup',
     },
     date: 1_752_000_000,
-    from: {
+    from: { language_code: 'ru',
       first_name: 'Ada',
       id: 7_001,
       is_bot: false,

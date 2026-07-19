@@ -1,5 +1,44 @@
 [Earlier entries](docs/archive/CHANGELOG-pre-S04.md) · [2026-07-19 archive](docs/archive/CHANGELOG-2026-07-19-pre-filter.md) · [Trust Memory archive](docs/archive/CHANGELOG-2026-07-19-pre-trust-memory.md) · [Pre-calibration archive](docs/archive/CHANGELOG-2026-07-19-pre-calibration.md) · [Trust Memory implementation archive](docs/archive/CHANGELOG-2026-07-19-trust-memory-implementation.md)
 
+## 2026-07-19 — Internationalization, chat settings, and delivery hardening
+
+### Added
+- Multilingual replies in English, Russian, and Spanish. The extractor detects the
+  message language, writes the commitment title/description in it (no more translation),
+  and reports it as `language`; a new `src/i18n` module plus a locale catalog in
+  `src/telegram/messages.ts` render all bot chrome per locale. Language flows from the
+  detected/overridden locale and is stored on suggestions and commitments (migration
+  `0012_multilingual_replies`).
+- Per-chat administrator settings: `/settings language auto|en|ru|es`,
+  `/settings timezone <IANA>`, and `/settings digest HH:MM`, alongside the existing
+  `/settings mode …`. Timezone and digest time are validated before saving.
+- Telegram rate-limit protection: `@grammyjs/transformer-throttler` and
+  `@grammyjs/auto-retry` are installed on the bot API so reminder/digest bursts respect
+  Telegram limits and retry on `429`.
+- `docs/privacy-policy.md` — an operator-completable privacy policy; README documents
+  languages, settings, and privacy.
+- Relative-deadline resolution (`src/domain/relative-date.ts`): phrases like "завтра",
+  "tomorrow 18:00", "к вечеру", "viernes", or a weekday are resolved to a concrete
+  `dueAt` in the chat's time zone (English/Russian/Spanish), so commitments now schedule
+  reminders instead of only keeping the deadline as text. Applied on suggestion creation
+  and when a private edit changes the `due` field; the human phrase is still shown.
+
+### Changed
+- Chat language preference defaults to `auto` (per-message detection, English fallback);
+  admins can pin a locale. Digest locale resolves from the chat preference or the
+  dominant commitment language.
+
+### Verified
+- `pnpm lint`, `pnpm typecheck`, `pnpm build` — passed.
+- `pnpm test` — passed: 30 files, 156 tests (added i18n and chat-settings suites; the
+  integration suite applies migrations `0000`–`0012` to PGlite).
+- `pnpm audit --prod --audit-level=moderate` — no known vulnerabilities.
+
+### Notes
+- The live Railway/staging prod run (backup, `pnpm db:migrate`, deploy, webhook,
+  Telegram smoke test) still requires an operator with staging credentials; it was not
+  run from this workspace.
+
 ## 2026-07-19 — Trust Memory release verification
 
 ### Changed

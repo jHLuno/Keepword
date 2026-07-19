@@ -8,13 +8,13 @@ import { ChatInactiveWriteError } from '../repositories/chats.js';
 import { createMessagesRepository } from '../repositories/messages.js';
 import type { RepositoryDatabase } from '../repositories/database.js';
 import { createUsersRepository } from '../repositories/users.js';
-import { renderNotificationInvite, renderSuggestion, type InlineKeyboardMarkup } from '../telegram/messages.js';
+import { renderNotificationInvite, renderSuggestion, t, type InlineKeyboardMarkup } from '../telegram/messages.js';
+import { isLocale, normalizeLocale, type Locale } from '../i18n/index.js';
+import { resolveDueDate } from '../domain/relative-date.js';
 
 import { createSuggestion } from './create-suggestion.js';
 import { createCallbackTokenService } from './callback-tokens.js';
 import type { OnboardingService } from './onboarding.js';
-
-const clarificationText = 'Похоже, это договорённость. Кто отвечает и к какому сроку?';
 
 export type GroupMessageForAnalysis = Readonly<{
   author: Readonly<{
@@ -47,6 +47,7 @@ export type ClarificationRequest = Readonly<{
 export type SuggestionMessenger = Readonly<{
   sendClarificationRequest: (request: ClarificationRequest) => Promise<void>;
   sendNotificationInvite?: (invite: Readonly<{
+    buttonText: string;
     onboardingDeepLink: string;
     telegramChatId: string;
     text: string;
@@ -129,11 +130,14 @@ export function createAnalyzeGroupMessage<TQueryResult extends PgQueryResultHKT>
       text: input.text,
     };
 
+    const chatLanguageOverride = isLocale(chat.language) ? chat.language : undefined;
     const candidate = await extractor.extractCandidate({
       chatId: chat.id,
       message: extractionMessage,
       recentMessages: [...recentMessages.slice(-4), extractionMessage],
+      ...(chatLanguageOverride ? { targetLanguage: chatLanguageOverride } : {}),
     });
+    const locale: Locale = chatLanguageOverride ?? normalizeLocale(candidate.language);
 
     let sourceMessage;
     try {
@@ -170,7 +174,7 @@ export function createAnalyzeGroupMessage<TQueryResult extends PgQueryResultHKT>
       await activeMessenger.sendClarificationRequest({
         replyToTelegramMessageId: input.telegramMessageId,
         telegramChatId: input.telegramChatId,
-        text: clarificationText,
+        text: t(locale).clarification,
       });
       return 'clarification-requested';
     }
@@ -196,8 +200,11 @@ export function createAnalyzeGroupMessage<TQueryResult extends PgQueryResultHKT>
         chatId: chat.id,
         confidence: candidate.confidence,
         description: candidate.description,
-        dueAt: candidate.due_at === null ? null : new Date(candidate.due_at),
+        dueAt: candidate.due_at === null
+          ? resolveDueDate(candidate.due_date_text, input.sentAt, chat.timezone)
+          : new Date(candidate.due_at),
         dueDateText: candidate.due_date_text,
+        language: locale,
         needsAssigneeClarification: candidate.needs_assignee_clarification,
         needsDueDateClarification: candidate.needs_due_date_clarification,
         sourceMessageId: sourceMessage.id,
@@ -245,9 +252,10 @@ export function createAnalyzeGroupMessage<TQueryResult extends PgQueryResultHKT>
       })
     ) {
       await activeMessenger.sendNotificationInvite({
+        buttonText: t(locale).notificationInviteButton,
         onboardingDeepLink: await notificationOnboarding.createOnboardingLink(chat.id),
         telegramChatId: input.telegramChatId,
-        text: renderNotificationInvite(assignee.username),
+        text: renderNotificationInvite(locale, assignee.username),
       });
     }
     const callbackNonces = await callbackTokens.issueSuggestionCallbacks({
@@ -258,6 +266,7 @@ export function createAnalyzeGroupMessage<TQueryResult extends PgQueryResultHKT>
       throw new Error('Suggestion callback nonce creation was incomplete');
     }
     const card = renderSuggestion(
+      locale,
       {
         dueDateText: candidate.due_date_text,
         id: createdSuggestion.id,

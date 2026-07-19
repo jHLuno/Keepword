@@ -6,7 +6,7 @@ Use this checklist for each Railway release. Run it with a production operator; 
 
 - [ ] Confirm the release commit passed `pnpm lint`, `pnpm typecheck`, `pnpm test`, and `pnpm build`.
 - [ ] Take and verify a recoverable PostgreSQL backup. Record its timestamp and restore procedure in the deployment record.
-- [ ] Review the migration set. This release includes `0009_check_page_callback_tokens`, `0010_suggestion_events`, and `0011_preserve_suggestion_event_history`; all are forward-only. `0009` replaces the callback-token constraint and `0011` drops the actor-membership foreign key, so the schema changes are not all purely additive; neither migration deletes existing data.
+- [ ] Review the migration set. This release includes `0009_check_page_callback_tokens`, `0010_suggestion_events`, `0011_preserve_suggestion_event_history`, and `0012_multilingual_replies`; all are forward-only. `0009` replaces the callback-token constraint and `0011` drops the actor-membership foreign key, so the schema changes are not all purely additive; `0012` only adds `NOT NULL` language columns with defaults (`chats.language='auto'`, `commitment_suggestions.language='en'`, `commitments.language='en'`). No migration deletes existing data.
 - [ ] Apply migrations once, first to **staging**, after confirming in Railway that `DATABASE_URL` belongs to staging (never paste it into terminal history or chat):
 
   ```bash

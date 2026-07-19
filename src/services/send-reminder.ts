@@ -5,6 +5,7 @@ import { createDeliveriesRepository, type DeliveriesRepository } from '../reposi
 import type { RepositoryDatabase } from '../repositories/database.js';
 import { createCallbackTokenService } from './callback-tokens.js';
 import { renderReminderCard, type InlineKeyboardMarkup } from '../telegram/messages.js';
+import { normalizeLocale } from '../i18n/index.js';
 
 export type ReminderMessenger = Readonly<{
   sendPrivateMessage: (input: Readonly<{
@@ -22,6 +23,7 @@ export type SendReminder = (input: Readonly<{
   dueDateText: string | null;
   idempotencyKey: string;
   kind: 'due' | 'overdue';
+  language: string;
   status: 'open' | 'overdue';
   title: string;
   workspaceId: string;
@@ -58,7 +60,7 @@ export function createSendReminder<TQueryResult extends PgQueryResultHKT>(input:
       if (!nonces.complete || !nonces.block || !nonces.cancel || !nonces.reschedule) {
         throw new Error('Could not issue reminder callbacks');
       }
-      card = renderReminderCard({
+      card = renderReminderCard(normalizeLocale(reminder.language), {
         dueDateText: reminder.dueDateText,
         status: reminder.status,
         title: reminder.title,

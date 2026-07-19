@@ -13,11 +13,11 @@ import { ChatSettingsError, type ChatSettingsService } from '../../services/chat
 import { ChatDataDeletionError, type DeleteChatData } from '../../services/delete-chat-data.js';
 import type { TelegramUpdate } from '../bot.js';
 import {
-  notificationStatusPrivateChatRequiredText,
-  notificationStatusSentText,
-  onboardingCardText,
   renderNotificationStatus,
+  renderOnboardingCard,
+  t,
 } from '../messages.js';
+import { normalizeLocale } from '../../i18n/index.js';
 import { parseTelegramCommand } from './commands.js';
 
 const groupMemberUpdateSchema = z
@@ -28,7 +28,7 @@ const groupMemberUpdateSchema = z
         title: z.string().min(1),
         type: z.enum(['group', 'supergroup']),
       }),
-      from: z.object({ id: z.number().int() }),
+      from: z.object({ id: z.number().int(), language_code: z.string().optional() }),
       new_chat_member: z.object({ status: z.string() }),
       old_chat_member: z.object({ status: z.string() }),
     }),
@@ -47,6 +47,7 @@ const groupMessageUpdateSchema = z
         first_name: z.string().min(1),
         id: z.number().int(),
         is_bot: z.boolean(),
+        language_code: z.string().optional(),
         last_name: z.string().optional(),
         username: z.string().optional(),
       }),
@@ -69,6 +70,7 @@ const groupMessageUpdateSchema = z
   .passthrough();
 
 export type OnboardingCard = Readonly<{
+  buttonText: string;
   onboardingDeepLink: string;
   telegramChatId: string;
   text: string;
@@ -81,6 +83,7 @@ export type GroupMessenger = Readonly<{
   sendPrivateMessage?: (input: Readonly<{ telegramUserId: number; text: string }>) => Promise<void>;
   sendOnboardingCard: (card: OnboardingCard) => Promise<void>;
   sendNotificationInvite?: (invite: Readonly<{
+    buttonText: string;
     onboardingDeepLink: string;
     telegramChatId: string;
     text: string;
@@ -110,11 +113,13 @@ export function createGroupUpdateHandler(input: Readonly<{
     const parsedMessageUpdate = groupMessageUpdateSchema.safeParse(update.payload);
     if (parsedMessageUpdate.success && !parsedMessageUpdate.data.message.from.is_bot) {
       const message = parsedMessageUpdate.data.message;
+      const locale = normalizeLocale(message.from.language_code);
+      const strings = t(locale);
       const command = parseTelegramCommand(message.text);
       if (command?.name === 'help') {
         await messenger.sendGroupMessage?.({
           telegramChatId: String(message.chat.id),
-          text: 'Команды группы: /keep ответом на сообщение, /invite, /notifications. Личные команды: /tasks, /check, /settings, /privacy.',
+          text: strings.groupHelp,
         });
         return;
       }
@@ -123,21 +128,41 @@ export function createGroupUpdateHandler(input: Readonly<{
         if (!chat) {
           return;
         }
-        const mode = command.argument?.toLowerCase() ?? '';
+        const args = (command.argument ?? '').trim().split(/\s+/).filter(Boolean);
+        const sub = args[0]?.toLowerCase() ?? '';
+        const value = args.slice(1).join(' ');
+        const settings = input.chatSettings(messenger.isCurrentChatAdmin ?? (() => Promise.resolve(false)));
+        const scope = {
+          chatId: chat.id,
+          requestedByTelegramUserId: String(message.from.id),
+          workspaceId: chat.workspaceId,
+        };
         try {
-          const savedMode = await input.chatSettings(messenger.isCurrentChatAdmin ?? (() => Promise.resolve(false))).setMode({
-            chatId: chat.id,
-            mode,
-            requestedByTelegramUserId: String(message.from.id),
-            workspaceId: chat.workspaceId,
-          });
-          const label = savedMode === 'suggest' ? 'Suggest' : savedMode === 'manual' ? 'Manual' : 'Silent Digest';
-          await messenger.sendGroupMessage?.({ telegramChatId: chat.telegramChatId, text: `Режим Keepword: ${label}.` });
+          let text: string;
+          if (sub === 'language') {
+            text = strings.settingsLanguageSaved(await settings.setLanguage({ ...scope, language: value }));
+          } else if (sub === 'timezone') {
+            text = strings.settingsTimezoneSaved(await settings.setTimezone({ ...scope, timezone: value }));
+          } else if (sub === 'digest') {
+            text = strings.settingsDigestSaved(await settings.setDigestTime({ ...scope, time: value }));
+          } else {
+            const mode = sub === 'mode' ? value : sub;
+            const savedMode = await settings.setMode({ ...scope, mode });
+            const label = savedMode === 'suggest' ? 'Suggest' : savedMode === 'manual' ? 'Manual' : 'Silent Digest';
+            text = strings.settingsModeSaved(label);
+          }
+          await messenger.sendGroupMessage?.({ telegramChatId: chat.telegramChatId, text });
         } catch (error: unknown) {
           if (error instanceof ChatSettingsError) {
             const text = error.code === 'UNAUTHORIZED'
-              ? 'Только текущий администратор чата может менять режим Keepword.'
-              : 'Используйте: /settings suggest|manual|silent_digest';
+              ? strings.settingsModeUnauthorized
+              : error.code === 'INVALID_LANGUAGE'
+                ? strings.settingsInvalidLanguage
+                : error.code === 'INVALID_TIMEZONE'
+                  ? strings.settingsInvalidTimezone
+                  : error.code === 'INVALID_DIGEST_TIME'
+                    ? strings.settingsInvalidDigest
+                    : strings.settingsModeUsage;
             await messenger.sendGroupMessage?.({ telegramChatId: chat.telegramChatId, text });
             return;
           }
@@ -146,7 +171,7 @@ export function createGroupUpdateHandler(input: Readonly<{
         return;
       }
       if (command?.name === 'settings' || command?.name === 'start' || command?.name === 'tasks' || command?.name === 'check') {
-        await messenger.sendGroupMessage?.({ telegramChatId: String(message.chat.id), text: 'Эта команда работает в личном чате с Keepword.' });
+        await messenger.sendGroupMessage?.({ telegramChatId: String(message.chat.id), text: strings.commandInPrivate });
         return;
       }
       if (command?.name === 'privacy' && command.argument?.toLowerCase() === 'delete' && input.deleteChatData && input.onboarding) {
@@ -160,12 +185,12 @@ export function createGroupUpdateHandler(input: Readonly<{
             requestedByTelegramUserId: String(message.from.id),
             workspaceId: chat.workspaceId,
           });
-          await messenger.sendGroupMessage?.({ telegramChatId: chat.telegramChatId, text: 'Данные Keepword для этого чата удалены.' });
+          await messenger.sendGroupMessage?.({ telegramChatId: chat.telegramChatId, text: strings.privacyDeleted });
         } catch (error: unknown) {
           if (error instanceof ChatDataDeletionError) {
             await messenger.sendGroupMessage?.({
               telegramChatId: chat.telegramChatId,
-              text: 'Только текущий администратор чата может удалить данные Keepword.',
+              text: strings.privacyDeleteUnauthorized,
             });
             return;
           }
@@ -176,7 +201,7 @@ export function createGroupUpdateHandler(input: Readonly<{
       if (command?.name === 'privacy') {
         await messenger.sendGroupMessage?.({
           telegramChatId: String(message.chat.id),
-          text: 'Keepword анализирует только новые сообщения после подключения. Текущий администратор может удалить данные командой /privacy delete.',
+          text: strings.groupPrivacyInfo,
         });
         return;
       }
@@ -185,7 +210,7 @@ export function createGroupUpdateHandler(input: Readonly<{
         if (!source || source.from.is_bot || !input.analyzeGroupMessage) {
           await messenger.sendGroupMessage?.({
             telegramChatId: String(message.chat.id),
-            text: 'Ответьте командой /keep на сообщение с договорённостью.',
+            text: strings.keepUsage,
           });
           return;
         }
@@ -213,7 +238,7 @@ export function createGroupUpdateHandler(input: Readonly<{
         if (!isAdmin) {
           await messenger.sendGroupMessage?.({
             telegramChatId: String(message.chat.id),
-            text: 'Только администратор чата может управлять уведомлениями.',
+            text: strings.notificationsAdminOnly,
           });
           return;
         }
@@ -224,9 +249,10 @@ export function createGroupUpdateHandler(input: Readonly<{
         if (command.name === 'invite') {
           const onboardingDeepLink = await input.onboarding.createOnboardingLink(chat.id);
           await messenger.sendOnboardingCard({
+            buttonText: strings.onboardingButton,
             onboardingDeepLink,
             telegramChatId: chat.telegramChatId,
-            text: onboardingCardText,
+            text: renderOnboardingCard(locale),
           });
           return;
         }
@@ -237,17 +263,17 @@ export function createGroupUpdateHandler(input: Readonly<{
         if (!status) {
           await messenger.sendGroupMessage?.({
             telegramChatId: chat.telegramChatId,
-            text: notificationStatusPrivateChatRequiredText,
+            text: strings.notificationStatusPrivateChatRequired,
           });
           return;
         }
         await messenger.sendPrivateMessage?.({
           telegramUserId: message.from.id,
-          text: renderNotificationStatus(status),
+          text: renderNotificationStatus(locale, status),
         });
         await messenger.sendGroupMessage?.({
           telegramChatId: chat.telegramChatId,
-          text: notificationStatusSentText,
+          text: strings.notificationStatusSent,
         });
         return;
       }
@@ -293,10 +319,12 @@ export function createGroupUpdateHandler(input: Readonly<{
       return;
     }
 
+    const memberLocale = normalizeLocale(memberUpdate.from.language_code);
     await messenger.sendOnboardingCard({
+      buttonText: t(memberLocale).onboardingButton,
       onboardingDeepLink: `https://t.me/${input.botUsername}?start=join_${invitation.onboardingToken}`,
       telegramChatId: invitation.telegramChatId,
-      text: onboardingCardText,
+      text: renderOnboardingCard(memberLocale),
     });
     await input.onboardingInvitations.markOnboardingMessageSent(invitation);
   };

@@ -7,6 +7,7 @@ import { createFakeOpenAi } from '../helpers/fake-openai.js';
 const validCandidate = {
   is_commitment: true,
   category: 'promise',
+  language: 'ru',
   title: 'Отправить КП',
   description: 'Отправить клиенту коммерческое предложение.',
   assignee_telegram_user_id: 'telegram-user-1',

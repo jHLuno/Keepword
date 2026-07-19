@@ -4,6 +4,7 @@ export const candidateSchema = z
   .object({
     is_commitment: z.boolean(),
     category: z.enum(['promise', 'assignment', 'follow_up', 'none']),
+    language: z.enum(['en', 'ru', 'es']),
     title: z.string().nullable(),
     description: z.string().nullable(),
     assignee_telegram_user_id: z.string().nullable(),
@@ -32,4 +33,11 @@ export type ExtractionInput = Readonly<{
   message: ExtractionMessage;
   recentMessages: readonly ExtractionMessage[];
   maxContextMessages?: number;
+  /**
+   * When set, the chat forces this language: the model must write `title` and
+   * `description` in it and report it as `language`, ignoring the message's own
+   * language. When omitted, the model detects and preserves the message
+   * language.
+   */
+  targetLanguage?: 'en' | 'ru' | 'es';
 }>;

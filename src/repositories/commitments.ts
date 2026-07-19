@@ -18,6 +18,7 @@ export type PendingSuggestionInput = Readonly<{
   description: string | null;
   dueAt: Date | null;
   dueDateText: string | null;
+  language: string;
   needsAssigneeClarification: boolean;
   needsDueDateClarification: boolean;
   sourceMessageId: string;
@@ -64,6 +65,7 @@ export function createCommitmentsRepository<TQueryResult extends PgQueryResultHK
           description: input.description,
           dueAt: input.dueAt,
           dueDateText: input.dueDateText,
+          language: input.language,
           needsAssigneeClarification: input.needsAssigneeClarification,
           needsDueDateClarification: input.needsDueDateClarification,
           normalizedTitle: normalizeSuggestionTitle(input.title),

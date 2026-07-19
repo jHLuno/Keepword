@@ -48,6 +48,7 @@ describe('opaque callback tokens', () => {
       assigneeUserId: membership.userId,
       chatId: connectedChat.chatId,
       confidence: 'high',
+      language: 'ru',
       description: null,
       dueAt: null,
       dueDateText: 'сегодня',

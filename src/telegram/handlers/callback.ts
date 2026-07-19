@@ -26,7 +26,8 @@ import { createCommitmentRescheduleService, CommitmentRescheduleError } from '..
 import { CallbackDataError, parseSignedCallbackData } from '../callback-data.js';
 import type { TelegramUpdate } from '../bot.js';
 import { createPrivateCommandHandler } from './commands.js';
-import type { InlineKeyboardMarkup } from '../messages.js';
+import { t, type InlineKeyboardMarkup } from '../messages.js';
+import { normalizeLocale } from '../../i18n/index.js';
 
 const callbackUpdateSchema = z
   .object({
@@ -35,6 +36,7 @@ const callbackUpdateSchema = z
       from: z.object({
         first_name: z.string().min(1),
         id: z.number().int(),
+        language_code: z.string().optional(),
       }),
       id: z.string().min(1),
       message: z.object({
@@ -62,9 +64,6 @@ export type CommitmentActionCallbackHandler = (
   update: TelegramUpdate,
   messenger: CallbackMessenger,
 ) => Promise<void>;
-
-const unavailableText = 'Действие недоступно.';
-const unauthorizedText = 'У вас нет прав на это действие.';
 
 async function resolveSuggestionTelegramChatId<TQueryResult extends PgQueryResultHKT>(
   database: RepositoryDatabase<TQueryResult>,
@@ -122,6 +121,7 @@ export function createCommitmentActionCallbackHandler<TQueryResult extends PgQue
     const callback = parsedUpdate.data.callback_query;
     const telegramChatId = String(callback.message.chat.id);
     const telegramUserId = callback.from.id;
+    const strings = t(normalizeLocale(callback.from.language_code));
     try {
       const signedCallback = parseSignedCallbackData(callback.data, input.callbackSigningSecret);
       const callbackTokens = createCallbackTokenService(input.database);
@@ -141,16 +141,17 @@ export function createCommitmentActionCallbackHandler<TQueryResult extends PgQue
         }
         await callbackTokens.claim(signedCallback);
         const page = await createPrivateCommandHandler(input.database, input.callbackSigningSecret).getCheckPage({
+          languageCode: callback.from.language_code,
           page: resolvedCallback.page,
           telegramUserId,
         });
         await messenger.editPrivateCheckMessage({
           telegramChatId,
           telegramMessageId: String(callback.message.message_id),
-          text: page.text ?? unavailableText,
+          text: page.text ?? strings.toastUnavailable,
           ...(page.replyMarkup ? { replyMarkup: page.replyMarkup } : {}),
         });
-        await messenger.answerCallbackQuery({ callbackQueryId: callback.id, text: 'Страница обновлена.' });
+        await messenger.answerCallbackQuery({ callbackQueryId: callback.id, text: strings.toastPageUpdated });
         return;
       }
       if (resolvedCallback.kind === 'commitment') {
@@ -172,7 +173,7 @@ export function createCommitmentActionCallbackHandler<TQueryResult extends PgQue
           });
           await messenger.answerCallbackQuery({
             callbackQueryId: callback.id,
-            text: 'Откройте личный чат с Keepword и отправьте due: <будущий ISO-срок с timezone>.',
+            text: strings.promptReschedule,
           });
           return;
         }
@@ -196,7 +197,7 @@ export function createCommitmentActionCallbackHandler<TQueryResult extends PgQue
           commitmentId: resolvedCallback.commitmentId,
           telegramChatId: actionTelegramChatId,
         });
-        await messenger.answerCallbackQuery({ callbackQueryId: callback.id, text: 'Статус задачи обновлён.' });
+        await messenger.answerCallbackQuery({ callbackQueryId: callback.id, text: strings.toastStatusUpdated });
         input.logger?.info('commitment_updated', {
           telegramChatId,
           telegramUserId: String(telegramUserId),
@@ -241,7 +242,7 @@ export function createCommitmentActionCallbackHandler<TQueryResult extends PgQue
         });
         await messenger.answerCallbackQuery({
           callbackQueryId: callback.id,
-          text: 'Откройте личный чат с Keepword и отправьте поля title, description или due.',
+          text: strings.promptEdit,
         });
         await messenger.sendPrivateEditPrompt?.({ telegramUserId });
         return;
@@ -286,8 +287,8 @@ export function createCommitmentActionCallbackHandler<TQueryResult extends PgQue
           confirmedByUserId: scopedActor.userId,
           suggestionId: resolvedCallback.suggestionId,
         });
-        await messenger.answerCallbackQuery({ callbackQueryId: callback.id, text: 'Договорённость сохранена.' });
-        await messenger.sendActionFeedback?.({ telegramChatId, text: '✅ Договорённость сохранена.' });
+        await messenger.answerCallbackQuery({ callbackQueryId: callback.id, text: strings.toastCommitmentSaved });
+        await messenger.sendActionFeedback?.({ telegramChatId, text: strings.feedbackCommitmentSaved });
         input.logger?.info('commitment_confirmed', {
           telegramChatId,
           telegramUserId: String(telegramUserId),
@@ -300,8 +301,8 @@ export function createCommitmentActionCallbackHandler<TQueryResult extends PgQue
         rejectedByUserId: scopedActor.userId,
         suggestionId: resolvedCallback.suggestionId,
       });
-      await messenger.answerCallbackQuery({ callbackQueryId: callback.id, text: 'Договорённость не будет сохранена.' });
-      await messenger.sendActionFeedback?.({ telegramChatId, text: 'Договорённость не будет сохранена.' });
+      await messenger.answerCallbackQuery({ callbackQueryId: callback.id, text: strings.toastCommitmentRejected });
+      await messenger.sendActionFeedback?.({ telegramChatId, text: strings.toastCommitmentRejected });
       input.logger?.info('commitment_rejected', {
         telegramChatId,
         telegramUserId: String(telegramUserId),
@@ -321,7 +322,7 @@ export function createCommitmentActionCallbackHandler<TQueryResult extends PgQue
       if (isUnauthorized || isExpectedUnavailable) {
         await messenger.answerCallbackQuery({
           callbackQueryId: callback.id,
-          text: isUnauthorized ? unauthorizedText : unavailableText,
+          text: isUnauthorized ? strings.toastUnauthorized : strings.toastUnavailable,
         });
         input.logger?.info('authorization_denied', {
           errorCode: isUnauthorized ? 'UNAUTHORIZED_CALLBACK_ACTION' : 'INVALID_OR_REPLAYED_CALLBACK_ACTION',

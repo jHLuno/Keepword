@@ -157,6 +157,7 @@ describe('chat data deletion', () => {
       extractCandidate: () => Promise.resolve({
         assignee_telegram_user_id: '130001',
         category: 'promise' as const,
+        language: 'ru' as const,
         confidence: 'high' as const,
         description: null,
         due_at: null,
@@ -198,6 +199,7 @@ describe('chat data deletion', () => {
         return {
           assignee_telegram_user_id: '130001',
           category: 'promise' as const,
+        language: 'ru' as const,
           confidence: 'high' as const,
           description: null,
           due_at: null,

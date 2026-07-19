@@ -14,8 +14,8 @@ test('renders stable, signed callback data with the server-resolvable suggestion
     edit: 'sMt0MEaxPBQQoTfGi_BS5h9V',
     reject: 's16Zo4NmuUcznlUymPSY1lZQ',
   };
-  const first = renderSuggestion(suggestion, callbackNonces, 'callback-signing-secret');
-  const second = renderSuggestion(suggestion, callbackNonces, 'callback-signing-secret');
+  const first = renderSuggestion('ru', suggestion, callbackNonces, 'callback-signing-secret');
+  const second = renderSuggestion('ru', suggestion, callbackNonces, 'callback-signing-secret');
   const callbacks = first.replyMarkup.inline_keyboard.flat().map((button) => button.callback_data);
 
   expect(callbacks).toEqual(second.replyMarkup.inline_keyboard.flat().map((button) => button.callback_data));
@@ -30,6 +30,7 @@ test('renders stable, signed callback data with the server-resolvable suggestion
 
 test('renders private lifecycle controls without commitment identifiers', () => {
   const buttons = renderCommitmentActions(
+    'ru',
     'overdue',
     {
       block: 'aL4BNU4F1XEl1R7W2lHjV3k8',

@@ -2,6 +2,28 @@
 
 Keepword turns team promises in Telegram chats into confirmed commitments.
 
+## Languages
+
+Keepword replies in **English, Russian, or Spanish**. By default it auto-detects the
+language of each message (commitment titles keep the original wording — they are never
+translated). A chat administrator can pin one language for the whole chat with
+`/settings language en|ru|es`, or restore auto-detection with `/settings language auto`.
+The fallback language when detection is inconclusive is English.
+
+## Per-chat settings (administrator only)
+
+- `/settings mode suggest|manual|silent_digest` — how Keepword captures commitments.
+- `/settings language auto|en|ru|es` — reply language.
+- `/settings timezone <IANA>` — e.g. `Europe/Madrid`, `Asia/Almaty`. Controls when
+  reminders and the daily summary fire. New chats default to `UTC`.
+- `/settings digest HH:MM` — local time of the daily evening summary (default `18:00`).
+
+## Privacy
+
+See [docs/privacy-policy.md](docs/privacy-policy.md) — a template to complete and publish
+before onboarding other teams. A current chat administrator can delete a chat's data with
+`/privacy delete`. Message text and names are never written to logs.
+
 ## Local setup
 
 1. Install Node.js 22 or later and pnpm 10.

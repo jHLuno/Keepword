@@ -15,6 +15,7 @@ let database: PgliteTestDatabase;
 const forwardedPromise: CommitmentCandidate = {
   assignee_telegram_user_id: null,
   category: 'promise',
+  language: 'ru',
   confidence: 'high',
   description: 'Подготовить бюджет к пятнице.',
   due_at: null,
@@ -107,7 +108,7 @@ describe('manual private capture', () => {
           chat: { id: senderTelegramUserId, type: 'private' },
           date: 1_784_365_200,
           forward_origin: { chat: { id: Number(chat.telegramChatId) }, type: 'chat' },
-          from: { first_name: 'Aigerim', id: senderTelegramUserId, is_bot: false },
+          from: { language_code: 'ru', first_name: 'Aigerim', id: senderTelegramUserId, is_bot: false },
           message_id: 33,
           text: 'Я подготовлю бюджет к пятнице',
         },
@@ -151,7 +152,7 @@ describe('manual private capture', () => {
       payload: {
         callback_query: {
           data: confirmData,
-          from: { first_name: 'Aigerim', id: senderTelegramUserId },
+          from: { language_code: 'ru', first_name: 'Aigerim', id: senderTelegramUserId },
           id: 'private-confirm',
           message: { chat: { id: senderTelegramUserId, type: 'private' } },
         },
@@ -216,7 +217,7 @@ describe('manual private capture', () => {
       payload: {
         callback_query: {
           data: foreignConfirm,
-          from: { first_name: 'Baurzhan', id: 9923 },
+          from: { language_code: 'ru', first_name: 'Baurzhan', id: 9923 },
           id: 'cross-user-confirm',
           message: { chat: { id: 9923, type: 'private' } },
         },

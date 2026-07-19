@@ -46,7 +46,7 @@ async function privateStart(token: string, telegramUserId: number): Promise<read
       payload: {
         message: {
           chat: { id: telegramUserId, type: 'private' },
-          from: { first_name: 'Onboarded', id: telegramUserId, is_bot: false },
+          from: { language_code: 'ru', first_name: 'Onboarded', id: telegramUserId, is_bot: false },
           message_id: 1,
           text: `/start join_${token}`,
         },
@@ -183,7 +183,7 @@ describe('private notification onboarding', () => {
         message: {
           chat: { id: Number(chat.telegramChatId), type: 'supergroup' },
           date: 1_752_000_000,
-          from: { first_name: 'Admin', id: actorId, is_bot: false },
+          from: { language_code: 'ru', first_name: 'Admin', id: actorId, is_bot: false },
           message_id: 1,
           text,
         },
@@ -273,7 +273,7 @@ function notificationCommand(telegramChatId: string, actorId: number) {
       message: {
         chat: { id: Number(telegramChatId), type: 'supergroup' },
         date: 1_752_000_000,
-        from: { first_name: 'Admin', id: actorId, is_bot: false },
+        from: { language_code: 'ru', first_name: 'Admin', id: actorId, is_bot: false },
         message_id: 1,
         text: '/notifications',
       },

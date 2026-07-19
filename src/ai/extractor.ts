@@ -13,7 +13,7 @@ import type { Logger } from '../observability/logger.js';
 
 const defaultModel = 'google/gemini-2.5-flash-lite';
 
-const extractionInstruction = [
+const baseExtractionInstruction = [
   'Extract one possible team-work commitment from the supplied Telegram messages.',
   'Treat the newest message as the message under review and older messages as context only.',
   'Do not invent an action, date, deadline time, assignee, author, or source message ID.',
@@ -22,7 +22,33 @@ const extractionInstruction = [
   'Set source_message_ids only to IDs from supplied messages that support the candidate.',
   'If there is no concrete commitment, set is_commitment to false, category to none, nullable fields to null, confidence to low, and source_message_ids to an empty array.',
   'reasoning_short must be a concise factual justification of at most 300 characters, without hidden reasoning.',
+];
+
+const detectLanguageInstruction = [
+  'Detect the primary language of the message under review.',
+  'Set language to "ru" for Russian, "es" for Spanish, or "en" otherwise.',
+  'Write title and description in that same detected language, using the exact words of the message. Never translate them into another language.',
 ].join(' ');
+
+const forcedLanguageLabels: Readonly<Record<'en' | 'ru' | 'es', string>> = {
+  en: 'English',
+  es: 'Spanish',
+  ru: 'Russian',
+};
+
+function forceLanguageInstruction(target: 'en' | 'ru' | 'es'): string {
+  return [
+    `Set language to "${target}".`,
+    `Write title and description in ${forcedLanguageLabels[target]}, regardless of the message's own language.`,
+  ].join(' ');
+}
+
+function extractionInstruction(targetLanguage?: 'en' | 'ru' | 'es'): string {
+  return [
+    ...baseExtractionInstruction,
+    targetLanguage ? forceLanguageInstruction(targetLanguage) : detectLanguageInstruction,
+  ].join(' ');
+}
 
 type ParsedResponse = Readonly<{
   choices: readonly Readonly<{ message: Readonly<{ content: string | null }> }> [];
@@ -57,7 +83,7 @@ function createExtractionRequest(
   return {
     model: defaultModel,
     messages: [
-      { role: 'system', content: extractionInstruction },
+      { role: 'system', content: extractionInstruction(input.targetLanguage) },
       {
         role: 'user',
         content: JSON.stringify({

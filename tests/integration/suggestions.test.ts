@@ -18,6 +18,7 @@ let telegramChatId = 40_000;
 const highConfidenceCandidate: CommitmentCandidate = {
   is_commitment: true,
   category: 'promise',
+  language: 'ru',
   title: 'Отправить КП клиенту',
   description: 'Отправить клиенту коммерческое предложение.',
   assignee_telegram_user_id: '8101',
@@ -263,6 +264,7 @@ describe('suggestions', () => {
       assigneeUserId: membership.userId,
       chatId: connectedChat.chatId,
       confidence: 'high',
+      language: 'ru',
       description: null,
       dueAt: null,
       dueDateText: 'сегодня',
@@ -319,5 +321,31 @@ describe('suggestions', () => {
 
     expect(fakeTelegram.suggestionReplies).toHaveLength(1);
     expect(fakeTelegram.suggestionReplies[0]?.replyToTelegramMessageId).toBe('5');
+  });
+
+  test('resolves a relative deadline into a concrete dueAt so a reminder can be scheduled', async () => {
+    const connected = await connectTestChat();
+    const analyzer = createAnalyzeGroupMessage(database.db, {
+      extractCandidate: (input) => Promise.resolve({
+        ...highConfidenceCandidate,
+        due_at: null,
+        due_date_text: 'завтра',
+        source_message_ids: [input.message.id],
+      }),
+    }, {
+      sendSuggestionReply: () => Promise.resolve(),
+      sendClarificationRequest: () => Promise.resolve(),
+    }, 'callback-test-secret');
+
+    await expect(analyzer(createMessage(10))).resolves.toBe('suggested');
+
+    const suggestion = (await database.db
+      .select({ dueAt: commitmentSuggestions.dueAt, dueDateText: commitmentSuggestions.dueDateText })
+      .from(commitmentSuggestions)
+      .where(eq(commitmentSuggestions.chatId, connected.chatId))
+      .limit(1))[0];
+    expect(suggestion?.dueDateText).toBe('завтра');
+    // The chat is UTC and the message was sent 2026-07-18T09:00Z, so "tomorrow" resolves to 2026-07-19 09:00Z.
+    expect(suggestion?.dueAt?.toISOString()).toBe('2026-07-19T09:00:00.000Z');
   });
 });

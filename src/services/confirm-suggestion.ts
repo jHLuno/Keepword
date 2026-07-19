@@ -60,6 +60,7 @@ export function createConfirmSuggestion<TQueryResult extends PgQueryResultHKT>(
             description: suggestion.description,
             dueAt: suggestion.dueAt,
             dueDateText: suggestion.dueDateText,
+            language: suggestion.language,
             title: suggestion.title,
             workspaceId: suggestion.workspaceId,
           })

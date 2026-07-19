@@ -335,7 +335,7 @@ describe('Telegram commands', () => {
       await callbackHandler({
         payload: { callback_query: {
           data: next.callback_data,
-          from: { first_name: 'Member', id: telegramUserId },
+          from: { language_code: 'ru', first_name: 'Member', id: telegramUserId },
           id,
           message: { chat: { id: telegramUserId, type: 'private' }, message_id: 1 },
         } },
@@ -372,7 +372,7 @@ describe('Telegram commands', () => {
     await callbackHandler({
       payload: { callback_query: {
         data: previous.callback_data,
-        from: { first_name: 'Actor', id: actorTelegramUserId },
+        from: { language_code: 'ru', first_name: 'Actor', id: actorTelegramUserId },
         id: 'check-previous',
         message: { chat: { id: actorTelegramUserId, type: 'private' }, message_id: 1 },
       } },
@@ -465,7 +465,7 @@ describe('Telegram commands', () => {
     await createCommitmentActionCallbackHandler({ callbackSigningSecret: 'check-test-secret', database: database.db })({
       payload: { callback_query: {
         data: complete.callback_data,
-        from: { first_name: 'Actor', id: actorTelegramUserId },
+        from: { language_code: 'ru', first_name: 'Actor', id: actorTelegramUserId },
         id: 'complete-from-check',
         message: { chat: { id: actorTelegramUserId, type: 'private' }, message_id: 1 },
       } },
@@ -492,11 +492,11 @@ describe('Telegram commands', () => {
         message: {
           chat: { id: -1009813, type: 'supergroup' },
           date: 1_784_365_200,
-          from: { first_name: 'Admin', id: 9813, is_bot: false },
+          from: { language_code: 'ru', first_name: 'Admin', id: 9813, is_bot: false },
           message_id: 41,
           reply_to_message: {
             date: 1_784_365_100,
-            from: { first_name: 'Author', id: 9814, is_bot: false },
+            from: { language_code: 'ru', first_name: 'Author', id: 9814, is_bot: false },
             message_id: 40,
             text: 'Я подготовлю бюджет к пятнице',
           },
@@ -524,7 +524,7 @@ function groupUpdate(telegramChatId: string, actorId: number, text: string) {
       message: {
         chat: { id: Number(telegramChatId), type: 'supergroup' },
         date: 1_784_365_200,
-        from: { first_name: 'Member', id: actorId, is_bot: false },
+        from: { language_code: 'ru', first_name: 'Member', id: actorId, is_bot: false },
         message_id: 1,
         text,
       },
@@ -540,7 +540,7 @@ function privateUpdate(telegramUserId: number, text: string) {
       message: {
         chat: { id: telegramUserId, type: 'private' },
         date: 1_784_365_200,
-        from: { first_name: 'Member', id: telegramUserId, is_bot: false },
+        from: { language_code: 'ru', first_name: 'Member', id: telegramUserId, is_bot: false },
         message_id: 1,
         text,
       },

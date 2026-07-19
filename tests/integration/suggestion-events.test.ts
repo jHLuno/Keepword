@@ -67,6 +67,7 @@ async function createPendingSuggestion(fixture: SuggestionFixture, title = 'От
     assigneeUserId: fixture.userId,
     chatId: fixture.chatId,
     confidence: 'high',
+    language: 'ru',
     description: 'Первоначальное описание',
     dueAt: new Date('2026-07-19T18:00:00.000Z'),
     dueDateText: 'сегодня до 18:00',

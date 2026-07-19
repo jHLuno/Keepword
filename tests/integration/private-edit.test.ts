@@ -49,6 +49,7 @@ describe('private suggestion editing', () => {
       assigneeUserId: membership.userId,
       chatId: chat.chatId,
       confidence: 'high',
+      language: 'ru',
       description: 'Старое описание',
       dueAt: null,
       dueDateText: 'сегодня',
@@ -73,7 +74,7 @@ describe('private suggestion editing', () => {
         payload: {
           message: {
             chat: { id: 9201, type: 'private' },
-            from: { first_name: 'Daniyar', id: 9201, is_bot: false },
+            from: { language_code: 'ru', first_name: 'Daniyar', id: 9201, is_bot: false },
             message_id: 2,
             text: 'title: Обновить КП\ndescription: Новое описание\ndue: завтра',
           },
@@ -107,7 +108,7 @@ describe('private suggestion editing', () => {
         payload: {
           message: {
             chat: { id: -1009201, type: 'supergroup' },
-            from: { first_name: 'Daniyar', id: 9201, is_bot: false },
+            from: { language_code: 'ru', first_name: 'Daniyar', id: 9201, is_bot: false },
             message_id: 3,
             text: 'title: Нельзя менять в группе',
           },
@@ -143,7 +144,7 @@ describe('private suggestion editing', () => {
       .where(and(eq(chatMemberships.chatId, chat.chatId), eq(chatMemberships.workspaceId, chat.workspaceId))).limit(1))[0];
     if (!membership) throw new Error('Expected membership');
     const createPending = (sourceMessageId: string, title: string) => createSuggestion(database.db)({
-      assigneeUserId: membership.userId, chatId: chat.chatId, confidence: 'high', description: null, dueAt: null,
+      assigneeUserId: membership.userId, chatId: chat.chatId, confidence: 'high', description: null, dueAt: null, language: 'ru',
       dueDateText: 'сегодня', needsAssigneeClarification: false, needsDueDateClarification: false, sourceMessageId, title, workspaceId: chat.workspaceId,
     });
     const [firstSuggestion, secondSuggestion] = await Promise.all([

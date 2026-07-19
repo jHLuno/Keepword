@@ -63,6 +63,7 @@ test('supports the complete approved MVP without leaking private task state', as
   const candidate: CommitmentCandidate = {
     assignee_telegram_user_id: String(adminTelegramUserId),
     category: 'promise',
+    language: 'ru',
     confidence: 'high',
     description: null,
     due_at: dueAt.toISOString(),
@@ -107,7 +108,7 @@ test('supports the complete approved MVP without leaking private task state', as
       payload: {
         my_chat_member: {
           chat: { id: telegramChatId, title: 'MVP flow chat', type: 'supergroup' },
-          from: { id: adminTelegramUserId },
+          from: { language_code: 'ru', id: adminTelegramUserId },
           new_chat_member: { status: 'member' },
           old_chat_member: { status: 'left' },
         },
@@ -129,7 +130,7 @@ test('supports the complete approved MVP without leaking private task state', as
         message: {
           chat: { id: adminTelegramUserId, type: 'private' },
           date: 1_784_365_200,
-          from: { first_name: 'Данияр', id: adminTelegramUserId, is_bot: false },
+          from: { language_code: 'ru', first_name: 'Данияр', id: adminTelegramUserId, is_bot: false },
           message_id: 1,
           text: `/start join_${onboardingToken}`,
         },
@@ -146,7 +147,7 @@ test('supports the complete approved MVP without leaking private task state', as
         message: {
           chat: { id: telegramChatId, type: 'supergroup' },
           date: 1_784_365_200,
-          from: { first_name: 'Данияр', id: adminTelegramUserId, is_bot: false },
+          from: { language_code: 'ru', first_name: 'Данияр', id: adminTelegramUserId, is_bot: false },
           message_id: 2,
           text: 'Сегодня до 12:00 отправлю КП клиенту',
         },
@@ -167,7 +168,7 @@ test('supports the complete approved MVP without leaking private task state', as
       payload: {
         callback_query: {
           data: confirmCallback,
-          from: { first_name: 'Данияр', id: adminTelegramUserId, is_bot: false },
+          from: { language_code: 'ru', first_name: 'Данияр', id: adminTelegramUserId, is_bot: false },
           id: 'mvp-flow-confirm',
           message: { chat: { id: telegramChatId, type: 'supergroup' }, message_id: 3 },
         },

@@ -135,7 +135,7 @@ describe('commitment status actions', () => {
       const answers: string[] = [];
       await handler({
         payload: { callback_query: {
-          data: callbackData, from: { first_name: 'User', id: telegramUserId }, id: `lifecycle-${telegramUserId}`,
+          data: callbackData, from: { language_code: 'ru', first_name: 'User', id: telegramUserId }, id: `lifecycle-${telegramUserId}`,
           message: { chat: { id: Number(fixture.telegramChatId), type: 'supergroup' }, message_id: 1 },
         } },
         updateId: telegramUserId,
@@ -179,7 +179,7 @@ describe('commitment status actions', () => {
     await handler({
       payload: { callback_query: {
         data: createSignedCallback('complete', nonce, 'callback-test-secret'),
-        from: { first_name: 'Assignee', id: 8201 },
+        from: { language_code: 'ru', first_name: 'Assignee', id: 8201 },
         id: 'private-reminder-complete',
         message: { chat: { id: 8201, type: 'private' }, message_id: 1 },
       } },
@@ -211,7 +211,7 @@ describe('commitment status actions', () => {
       const answers: string[] = [];
       await handler({
         payload: { callback_query: {
-          data: callbackData, from: { first_name: 'User', id: telegramUserId }, id: `private-denied-${telegramUserId}`,
+          data: callbackData, from: { language_code: 'ru', first_name: 'User', id: telegramUserId }, id: `private-denied-${telegramUserId}`,
           message: { chat: { id: telegramUserId, type: 'private' }, message_id: 1 },
         } },
         updateId: telegramUserId,

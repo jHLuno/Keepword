@@ -77,6 +77,7 @@ async function createFixture(): Promise<Fixture> {
     assigneeUserId: sourceAuthor.userId,
     chatId: chat.chatId,
     confidence: 'high',
+    language: 'ru',
     description: null,
     dueAt: null,
     dueDateText: 'сегодня',
@@ -94,6 +95,7 @@ async function createFixture(): Promise<Fixture> {
     throw new Error('Expected callback nonces');
   }
   const callbackData = renderSuggestion(
+    'ru',
     { dueDateText: 'сегодня', id: suggestion.id, title: 'Отправить КП клиенту' },
     { confirm: callbackNonces.confirm, edit: callbackNonces.edit, reject: callbackNonces.reject },
     callbackSigningSecret,
@@ -146,7 +148,7 @@ async function callbackAs(
       payload: {
         callback_query: {
           data: callbackData,
-          from: { first_name: 'Callback user', id: actorTelegramUserId, is_bot: false },
+          from: { language_code: 'ru', first_name: 'Callback user', id: actorTelegramUserId, is_bot: false },
           id: `callback-${actorTelegramUserId}`,
           message: {
             chat: { id: fixture.telegramChatId, type: 'supergroup' },
@@ -279,7 +281,7 @@ describe('suggestion callback authorization', () => {
       payload: {
         callback_query: {
           data: fixture.callbackData,
-          from: { first_name: 'Daniyar', id: 8101, is_bot: false },
+          from: { language_code: 'ru', first_name: 'Daniyar', id: 8101, is_bot: false },
           id: 'callback-webhook-id',
           message: { chat: { id: fixture.telegramChatId, type: 'supergroup' }, message_id: 99 },
         },

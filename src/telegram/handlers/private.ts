@@ -20,10 +20,12 @@ import {
 import { OnboardingError, type OnboardingService } from '../../services/onboarding.js';
 import type { ManualCapture } from '../../services/manual-capture.js';
 import {
-  onboardingHelpText,
-  onboardingTokenUnavailableText,
   renderOnboardingConnected,
+  renderOnboardingHelp,
+  renderOnboardingTokenUnavailable,
+  t,
 } from '../messages.js';
+import { normalizeLocale } from '../../i18n/index.js';
 import type { InlineKeyboardMarkup } from '../messages.js';
 import type { TelegramUpdate } from '../bot.js';
 import { createPrivateCommandHandler, parseTelegramCommand } from './commands.js';
@@ -38,7 +40,7 @@ const privateMessageSchema = z
         chat: z.object({ id: z.number().int() }).optional(),
         type: z.string(),
       }).passthrough().optional(),
-      from: z.object({ first_name: z.string().min(1), id: z.number().int(), is_bot: z.boolean() }),
+      from: z.object({ first_name: z.string().min(1), id: z.number().int(), is_bot: z.boolean(), language_code: z.string().optional() }),
       message_id: z.number().int().nonnegative(),
       text: z.string().min(1),
     }),
@@ -73,12 +75,14 @@ export function createPrivateUpdateHandler<TQueryResult extends PgQueryResultHKT
       return;
     }
     const message = parsed.data.message;
+    const locale = normalizeLocale(message.from.language_code);
+    const strings = t(locale);
     const command = parseTelegramCommand(message.text);
     const startMatch = /^\/start(?:\s+(.+))?$/i.exec(message.text.trim());
     if (startMatch) {
       const joinMatch = /^join_([A-Za-z0-9_-]+)$/.exec(startMatch[1] ?? '');
       if (!joinMatch || !input.onboarding) {
-        await messenger.sendPrivateMessage({ telegramUserId: message.from.id, text: onboardingHelpText });
+        await messenger.sendPrivateMessage({ telegramUserId: message.from.id, text: renderOnboardingHelp(locale) });
         return;
       }
       try {
@@ -88,7 +92,7 @@ export function createPrivateUpdateHandler<TQueryResult extends PgQueryResultHKT
         });
         await messenger.sendPrivateMessage({
           telegramUserId: message.from.id,
-          text: renderOnboardingConnected(membership.chatTitle),
+          text: renderOnboardingConnected(locale, membership.chatTitle),
         });
         input.logger?.info('onboarding_completed', {
           telegramUserId: String(message.from.id),
@@ -97,7 +101,7 @@ export function createPrivateUpdateHandler<TQueryResult extends PgQueryResultHKT
         });
       } catch (error: unknown) {
         if (error instanceof OnboardingError) {
-          await messenger.sendPrivateMessage({ telegramUserId: message.from.id, text: onboardingTokenUnavailableText });
+          await messenger.sendPrivateMessage({ telegramUserId: message.from.id, text: renderOnboardingTokenUnavailable(locale) });
           input.logger?.info('onboarding_completed', {
             errorCode: error.code,
             telegramUserId: String(message.from.id),
@@ -110,12 +114,12 @@ export function createPrivateUpdateHandler<TQueryResult extends PgQueryResultHKT
       return;
     }
     if (command) {
-      const result = await commands.handle({ command, telegramUserId: message.from.id });
+      const result = await commands.handle({ command, languageCode: message.from.language_code, telegramUserId: message.from.id });
       if (result.handled) {
         await messenger.sendPrivateMessage({
           ...(result.replyMarkup ? { replyMarkup: result.replyMarkup } : {}),
           telegramUserId: message.from.id,
-          text: result.text ?? onboardingHelpText,
+          text: result.text ?? renderOnboardingHelp(locale),
         });
         return;
       }
@@ -142,7 +146,7 @@ export function createPrivateUpdateHandler<TQueryResult extends PgQueryResultHKT
           if (result.status === 'unavailable') {
             await messenger.sendPrivateMessage({
               telegramUserId: message.from.id,
-              text: 'Подключите уведомления для одной группы, чтобы сохранить это обязательство.',
+              text: strings.manualCaptureConnectFirst,
             });
           }
         }
@@ -152,7 +156,7 @@ export function createPrivateUpdateHandler<TQueryResult extends PgQueryResultHKT
       if (!dueMatch?.[1]) {
         await messenger.sendPrivateMessage({
           telegramUserId: message.from.id,
-          text: 'Укажите будущий срок в формате due: <ISO timestamp с timezone>.',
+          text: strings.rescheduleUsage,
         });
         return;
       }
@@ -161,12 +165,12 @@ export function createPrivateUpdateHandler<TQueryResult extends PgQueryResultHKT
           actor: { firstName: message.from.first_name, telegramUserId: message.from.id },
           dueDateText: dueMatch[1],
         });
-        await messenger.sendPrivateMessage({ telegramUserId: message.from.id, text: 'Новый срок сохранён.' });
+        await messenger.sendPrivateMessage({ telegramUserId: message.from.id, text: strings.rescheduleSaved });
       } catch (error: unknown) {
         if (error instanceof CommitmentRescheduleError) {
           await messenger.sendPrivateMessage({
             telegramUserId: message.from.id,
-            text: 'Не удалось перенести срок. Откройте карточку заново.',
+            text: strings.rescheduleFailed,
           });
           return;
         }
@@ -192,7 +196,7 @@ export function createPrivateUpdateHandler<TQueryResult extends PgQueryResultHKT
       });
       await messenger.sendPrivateMessage({
         telegramUserId: message.from.id,
-        text: 'Изменения сохранены. Подтвердите карточку в группе.',
+        text: strings.editSaved,
       });
       input.logger?.info('commitment_updated', { telegramUserId: String(message.from.id), result: 'success' });
     } catch (error: unknown) {
@@ -202,7 +206,7 @@ export function createPrivateUpdateHandler<TQueryResult extends PgQueryResultHKT
       ) {
         await messenger.sendPrivateMessage({
           telegramUserId: message.from.id,
-          text: 'Не удалось применить изменения. Откройте карточку заново.',
+          text: strings.editFailed,
         });
         return;
       }

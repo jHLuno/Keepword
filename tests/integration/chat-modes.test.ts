@@ -20,6 +20,7 @@ let nextTelegramChatId = 120_000;
 const candidate: CommitmentCandidate = {
   assignee_telegram_user_id: '120001',
   category: 'promise',
+  language: 'ru',
   confidence: 'high',
   description: null,
   due_at: null,
@@ -56,13 +57,13 @@ function groupMessage(chatId: number, messageId: number, text: string, replyToMe
       message: {
         chat: { id: chatId, type: 'supergroup' },
         date: 1_784_365_200,
-        from: { first_name: 'Admin', id: 120001, is_bot: false },
+        from: { language_code: 'ru', first_name: 'Admin', id: 120001, is_bot: false },
         message_id: messageId,
         ...(replyToMessage
           ? {
               reply_to_message: {
                 date: 1_784_365_100,
-                from: { first_name: 'Admin', id: 120001, is_bot: false },
+                from: { language_code: 'ru', first_name: 'Admin', id: 120001, is_bot: false },
                 message_id: replyToMessage.id,
                 text: replyToMessage.text,
               },
@@ -131,7 +132,7 @@ describe('chat modes', () => {
     if (!admin) throw new Error('Expected admin');
     await database.db.update(users).set({ privateChatStartedAt: new Date() }).where(eq(users.id, admin.id));
     await database.db.update(chatMemberships).set({ notificationsEnabled: true }).where(eq(chatMemberships.userId, admin.id));
-    await database.db.update(chats).set({ dailyDigestTime: '18:00:00' }).where(eq(chats.id, connected.chatId));
+    await database.db.update(chats).set({ dailyDigestTime: '18:00:00', language: 'ru' }).where(eq(chats.id, connected.chatId));
     const replies: string[] = [];
     const analyzer = createAnalyzeGroupMessage(database.db, {
       extractCandidate: () => Promise.resolve(candidate),

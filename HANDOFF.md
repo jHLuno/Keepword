@@ -1,5 +1,40 @@
 [Earlier entries](docs/archive/HANDOFF-pre-S04.md) · [2026-07-19 archive](docs/archive/HANDOFF-2026-07-19-pre-filter.md) · [Trust Memory archive](docs/archive/HANDOFF-2026-07-19-pre-trust-memory.md) · [Pre-calibration archive](docs/archive/HANDOFF-2026-07-19-pre-calibration.md) · [Trust Memory implementation archive](docs/archive/HANDOFF-2026-07-19-trust-memory-implementation.md)
 
+## 2026-07-19 — Internationalization & delivery hardening handoff
+
+### Done
+- Added EN/RU/ES replies: extractor preserves the message language (fixes titles being
+  translated to random languages) and returns `language`; all bot chrome is localized via
+  `src/i18n` + the catalog in `src/telegram/messages.ts`. Language is stored on suggestions
+  and commitments (migration `0012_multilingual_replies`).
+- Added `/settings language|timezone|digest` for chat admins (with validation) on top of
+  `/settings mode`.
+- Added Telegram throttling + auto-retry (`@grammyjs/transformer-throttler`,
+  `@grammyjs/auto-retry`).
+- Added `docs/privacy-policy.md` and README sections for languages/settings/privacy.
+- Added relative-deadline resolution (`src/domain/relative-date.ts`): "завтра",
+  "tomorrow 18:00", "к вечеру", weekday names, etc. now resolve to a concrete `dueAt` in
+  the chat time zone, so reminders are actually scheduled and delivered. Wired into
+  suggestion creation and private `due` edits.
+- Verified locally: lint, typecheck, build, `pnpm audit --prod`, and `pnpm test`
+  (30 files / 156 tests, incl. migration `0012` applied to PGlite).
+
+### Not done
+- No live staging run: `pnpm db:migrate` (now includes `0012`), Railway deploy, webhook
+  registration, and Telegram smoke test still require an operator with staging credentials.
+
+### Risks / blockers
+- Migration `0012` adds three `NOT NULL` columns with defaults (`chats.language='auto'`,
+  `commitment_suggestions.language='en'`, `commitments.language='en'`) — additive, but must
+  be applied to staging before deploying the new image.
+- Relative-deadline resolution defaults a bare day to 09:00 local and evening cues to 18:00;
+  confirm the default hours match the team's expectation during the staging smoke test.
+
+### Next recommended step
+- On staging: back up the DB, run `pnpm db:migrate` once, deploy web + worker, then run the
+  smoke checks in `docs/release-checklist.md` (verify RU/EN/ES replies, `/settings timezone`
+  and `/settings digest`, and a reminder burst under throttling) before production.
+
 ## 2026-07-19 — Handoff
 
 ### Done

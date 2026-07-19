@@ -17,7 +17,25 @@ import {
   type SendDigest,
 } from '../services/send-digest.js';
 import { renderAdminDigest, renderUserDigest } from '../telegram/messages.js';
+import { defaultLocale, isLocale, normalizeLocale, type Locale } from '../i18n/index.js';
 import type { CurrentChatAdminChecker } from '../services/authorize-action.js';
+
+function pickCommonLocale(languages: readonly string[]): Locale {
+  const counts = new Map<Locale, number>();
+  for (const language of languages) {
+    const locale = normalizeLocale(language);
+    counts.set(locale, (counts.get(locale) ?? 0) + 1);
+  }
+  let winner: Locale = defaultLocale;
+  let best = 0;
+  for (const [locale, count] of counts) {
+    if (count > best) {
+      best = count;
+      winner = locale;
+    }
+  }
+  return winner;
+}
 
 export type RunDigestJob = (now: Date) => Promise<JobResult>;
 
@@ -73,6 +91,7 @@ export function createDigestJob<TQueryResult extends PgQueryResultHKT>(input: Re
       .select({
         dailyDigestTime: chats.dailyDigestTime,
         id: chats.id,
+        language: chats.language,
         telegramChatId: chats.telegramChatId,
         timezone: chats.timezone,
         workspaceId: chats.workspaceId,
@@ -102,6 +121,7 @@ export function createDigestJob<TQueryResult extends PgQueryResultHKT>(input: Re
             completedAt: commitments.completedAt,
             dueAt: commitments.dueAt,
             id: commitments.id,
+            language: commitments.language,
             status: commitments.status,
             title: commitments.title,
           })
@@ -130,6 +150,9 @@ export function createDigestJob<TQueryResult extends PgQueryResultHKT>(input: Re
           workspaceId: chat.workspaceId,
         }),
       ]);
+      const digestLocale: Locale = isLocale(chat.language)
+        ? chat.language
+        : pickCommonLocale(chatCommitments.map((commitment) => commitment.language));
       const digestInput = {
         ...(calibration ? { calibration } : {}),
         ...(reliability.length > 0 ? { reliability } : {}),
@@ -150,7 +173,7 @@ export function createDigestJob<TQueryResult extends PgQueryResultHKT>(input: Re
           idempotencyKey: `digest:${chat.id}:${recipient.userId}:${local.date}:personal`,
           kind: 'personal',
           telegramUserId: recipient.telegramUserId,
-          text: renderUserDigest(personal),
+          text: renderUserDigest(digestLocale, personal),
           userId: recipient.userId,
           workspaceId: chat.workspaceId,
         });
@@ -177,7 +200,7 @@ export function createDigestJob<TQueryResult extends PgQueryResultHKT>(input: Re
           idempotencyKey: `digest:${chat.id}:${recipient.userId}:${local.date}:admin`,
           kind: 'admin',
           telegramUserId: recipient.telegramUserId,
-          text: renderAdminDigest(admin),
+          text: renderAdminDigest(digestLocale, admin),
           userId: recipient.userId,
           workspaceId: chat.workspaceId,
         });

@@ -4,6 +4,7 @@ import type { PgQueryResultHKT } from 'drizzle-orm/pg-core';
 import { chats, commitmentRescheduleSessions, commitmentSuggestions, suggestionEditSessions, suggestionEvents, users } from '../db/schema.js';
 import { normalizeSuggestionTitle } from '../repositories/commitments.js';
 import type { RepositoryDatabase } from '../repositories/database.js';
+import { resolveDueDate } from '../domain/relative-date.js';
 
 import { snapshotSuggestion } from './suggestion-snapshots.js';
 
@@ -107,10 +108,24 @@ export function createSuggestionEditSessionService<TQueryResult extends PgQueryR
         if (!current) {
           throw new SuggestionEditSessionError('EDIT_SESSION_UNAVAILABLE');
         }
+        let dueAtPatch: Readonly<{ dueAt: Date | null }> | Record<string, never> = {};
+        if (input.patch.dueDateText !== undefined) {
+          let dueAt: Date | null = null;
+          if (input.patch.dueDateText !== null) {
+            const chatRows = await transaction
+              .select({ timezone: chats.timezone })
+              .from(chats)
+              .where(and(eq(chats.id, current.chatId), eq(chats.workspaceId, current.workspaceId)))
+              .limit(1);
+            dueAt = resolveDueDate(input.patch.dueDateText, new Date(), chatRows[0]?.timezone ?? 'UTC');
+          }
+          dueAtPatch = { dueAt };
+        }
         const rows = await transaction
           .update(commitmentSuggestions)
           .set({
             ...input.patch,
+            ...dueAtPatch,
             ...(input.patch.title === undefined
               ? {}
               : { normalizedTitle: normalizeSuggestionTitle(input.patch.title) }),
