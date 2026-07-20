@@ -1,0 +1,188 @@
+@import "tailwindcss";
+
+/* ------------------------------------------------------------------
+   Keepword — monochrome / black technical system
+   ------------------------------------------------------------------ */
+@theme {
+  --color-bg: #080808;
+  --color-bg-2: #0c0c0c;
+  --color-panel: #0d0d0d;
+  --color-panel-2: #111111;
+  --color-fg: #f4f4f1;
+  --color-fg-dim: #9b9b96;
+  --color-fg-mute: #6a6a65;
+  --color-line: rgba(255, 255, 255, 0.13);
+  --color-line-soft: rgba(255, 255, 255, 0.07);
+  --color-accent: #efe9dc;
+
+  --font-display: var(--font-pixel), "Courier New", monospace;
+  --font-sans: var(--font-manrope), system-ui, sans-serif;
+
+  --shadow-panel: 0 30px 80px -40px rgba(0, 0, 0, 0.9);
+}
+
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+  background: var(--color-bg);
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-fg);
+  font-family: var(--font-sans);
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow-x: hidden;
+}
+
+::selection {
+  background: var(--color-fg);
+  color: var(--color-bg);
+}
+
+/* film grain */
+.grain::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  pointer-events: none;
+  opacity: 0.055;
+  mix-blend-mode: screen;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* pixel headings render crisper without smoothing tricks */
+.font-display {
+  font-family: var(--font-display);
+  letter-spacing: 0.01em;
+}
+
+.text-balance {
+  text-wrap: balance;
+}
+
+/* dotted / hatched separators */
+.hatch {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    rgba(255, 255, 255, 0.16) 0 1px,
+    transparent 1px 8px
+  );
+}
+
+.rule {
+  height: 1px;
+  background: var(--color-line);
+}
+
+/* -----------------------------------------------------------------
+   Notched HUD card (chamfered corners + hairline border)
+   ----------------------------------------------------------------- */
+.notch {
+  position: relative;
+  --n: 18px;
+  --bd: rgba(255, 255, 255, 0.22);
+  --fill: #0a0a0a;
+}
+.notch::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--bd);
+  clip-path: polygon(
+    var(--n) 0,
+    100% 0,
+    100% calc(100% - var(--n)),
+    calc(100% - var(--n)) 100%,
+    0 100%,
+    0 var(--n)
+  );
+}
+.notch::after {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  background: var(--fill);
+  clip-path: polygon(
+    var(--n) 0,
+    100% 0,
+    100% calc(100% - var(--n)),
+    calc(100% - var(--n)) 100%,
+    0 100%,
+    0 var(--n)
+  );
+}
+.notch--hover {
+  transition: transform 0.4s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+.notch--hover:hover {
+  transform: translateY(-4px);
+}
+.notch--hover:hover::before {
+  background: rgba(255, 255, 255, 0.4);
+}
+
+/* animations */
+@keyframes twinkle {
+  0%,
+  100% {
+    opacity: 0;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+@keyframes ping-soft {
+  0% {
+    box-shadow: 0 0 0 0 rgba(244, 244, 241, 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 7px rgba(244, 244, 241, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(244, 244, 241, 0);
+  }
+}
+@keyframes scan {
+  0% {
+    top: -44px;
+  }
+  100% {
+    top: 100%;
+  }
+}
+@keyframes wheel {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 0);
+  }
+  30% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, 12px);
+  }
+}
+@keyframes blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.2;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+}
