@@ -98,6 +98,7 @@ test('resolves Russian and English relative deadlines in the source chat timezon
   expect(resolveDueDate('в понедельник 18:00', reference, timezone)?.toISOString()).toBe('2026-07-20T13:00:00.000Z');
   expect(resolveDueDate('today 22:00', reference, timezone)?.toISOString()).toBe('2026-07-20T17:00:00.000Z');
   expect(resolveDueDate('tomorrow 18:00', reference, timezone)?.toISOString()).toBe('2026-07-21T13:00:00.000Z');
+  expect(resolveDueDate('monday 18:00', reference, timezone)?.toISOString()).toBe('2026-07-20T13:00:00.000Z');
 });
 
 test('keeps a reschedule session active when a recognized deadline is already past', async () => {

@@ -6,6 +6,7 @@ import { createConnectChat } from '../../src/services/connect-chat.js';
 import { chatMemberships, commitments } from '../../src/db/schema.js';
 import { and, eq } from 'drizzle-orm';
 import { createCallbackTokenService } from '../../src/services/callback-tokens.js';
+import { createCommitmentRescheduleService } from '../../src/services/commitment-reschedule-sessions.js';
 import { createSignedCallback } from '../../src/telegram/callback-data.js';
 import { createCommitmentActionCallbackHandler } from '../../src/telegram/handlers/callback.js';
 
@@ -229,6 +230,42 @@ describe('commitment status actions', () => {
     await callbackAs(8201, 'reschedule-authorized');
     expect(disabledCards).toEqual([{ telegramChatId: '8201', telegramMessageId: '77' }]);
     expect(answers.at(-1)).toContain('В личном чате с Keepword');
+  });
+
+  test('keeps an authorized private reschedule session usable when removing reminder controls fails', async () => {
+    const fixture = await createOpenCommitment();
+    await createUpdateCommitment(database.db)({ ...fixture, status: 'overdue' });
+    const nonce = (await createCallbackTokenService(database.db).issueCommitmentCallbacks({
+      actions: ['reschedule'], commitmentId: fixture.commitmentId,
+    })).reschedule;
+    if (!nonce) throw new Error('Expected reschedule nonce');
+    const handler = createCommitmentActionCallbackHandler({
+      callbackSigningSecret: 'callback-test-secret',
+      database: database.db,
+      isCurrentChatAdmin: () => Promise.resolve(false),
+    });
+    const answers: string[] = [];
+    const prompts: string[] = [];
+
+    await expect(handler({
+      payload: { callback_query: {
+        data: createSignedCallback('reschedule', nonce, 'callback-test-secret'),
+        from: { language_code: 'ru', first_name: 'Assignee', id: 8201 },
+        id: 'reschedule-card-edit-failed',
+        message: { chat: { id: 8201, type: 'private' }, message_id: 88 },
+      } },
+      updateId: 82_101,
+    }, {
+      answerCallbackQuery: ({ text }) => { answers.push(text); return Promise.resolve(); },
+      editCallbackMessage: () => Promise.reject(new Error('Telegram editMessageReplyMarkup timed out')),
+      sendPrivatePrompt: ({ text }) => { prompts.push(text); return Promise.resolve(); },
+    })).resolves.toBeUndefined();
+
+    const reschedules = createCommitmentRescheduleService(database.db, () => Promise.resolve(false));
+    expect(await reschedules.hasActive(8201)).toBe(true);
+    expect(await reschedules.hasActive(8203)).toBe(false);
+    expect(answers.at(-1)).toContain('В личном чате с Keepword');
+    expect(prompts).toHaveLength(1);
   });
 
   test('denies a private commitment callback to a participant and an administrator of another source chat', async () => {

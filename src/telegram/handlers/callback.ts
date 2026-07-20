@@ -172,17 +172,27 @@ export function createCommitmentActionCallbackHandler<TQueryResult extends PgQue
             telegramChatId: actionTelegramChatId,
           });
           await callbackTokens.claim(signedCallback);
-          if (callback.message.message_id !== undefined && messenger.editCallbackMessage) {
-            await messenger.editCallbackMessage({
-              telegramChatId,
-              telegramMessageId: String(callback.message.message_id),
-            });
-          }
           await createCommitmentRescheduleService(input.database, currentAdminChecker).begin({
             actorTelegramUserId: telegramUserId,
             commitmentId: resolvedCallback.commitmentId,
             telegramChatId: actionTelegramChatId,
           });
+          if (callback.message.message_id !== undefined && messenger.editCallbackMessage) {
+            try {
+              await messenger.editCallbackMessage({
+                telegramChatId,
+                telegramMessageId: String(callback.message.message_id),
+              });
+            } catch {
+              input.logger?.error('commitment_reminder_controls_removal_failed', {
+                commitmentId: resolvedCallback.commitmentId,
+                errorCode: 'TELEGRAM_CARD_UPDATE_FAILED',
+                telegramChatId,
+                telegramUserId: String(telegramUserId),
+                result: 'failure',
+              });
+            }
+          }
           await messenger.answerCallbackQuery({
             callbackQueryId: callback.id,
             text: strings.promptReschedule,
