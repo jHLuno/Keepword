@@ -9,9 +9,9 @@ import { resolveDueDate } from '../domain/relative-date.js';
 const sessionLifetimeMs = 15 * 60 * 1_000;
 
 export class CommitmentRescheduleError extends Error {
-  readonly code: 'RESCHEDULE_UNAVAILABLE' | 'UNAUTHORIZED';
+  readonly code: 'RESCHEDULE_PAST_DUE_DATE' | 'RESCHEDULE_UNAVAILABLE' | 'UNAUTHORIZED';
 
-  constructor(code: 'RESCHEDULE_UNAVAILABLE' | 'UNAUTHORIZED') {
+  constructor(code: 'RESCHEDULE_PAST_DUE_DATE' | 'RESCHEDULE_UNAVAILABLE' | 'UNAUTHORIZED') {
     super(code);
     this.code = code;
   }
@@ -112,9 +112,13 @@ export function createCommitmentRescheduleService<TQueryResult extends PgQueryRe
         }
         // Accept an exact ISO timestamp or a natural phrase ("tomorrow 18:00",
         // "сегодня 22:00", "к вечеру", a weekday), resolved in the chat's time zone.
-        const dueAt = resolveDueDate(dueDateText, new Date(), commitmentScope.timezone);
-        if (!dueAt || Number.isNaN(dueAt.getTime()) || dueAt.getTime() <= Date.now()) {
+        const now = new Date();
+        const dueAt = resolveDueDate(dueDateText, now, commitmentScope.timezone);
+        if (!dueAt || Number.isNaN(dueAt.getTime())) {
           throw new CommitmentRescheduleError('RESCHEDULE_UNAVAILABLE');
+        }
+        if (dueAt.getTime() <= now.getTime()) {
+          throw new CommitmentRescheduleError('RESCHEDULE_PAST_DUE_DATE');
         }
         const claimed = await transaction
           .update(commitmentRescheduleSessions)

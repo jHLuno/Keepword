@@ -79,6 +79,18 @@ function createGrammYCallbackMessenger(context: Context): CallbackMessenger {
       return member.status === 'administrator' || member.status === 'creator';
     },
 
+    async editCallbackMessage(input) {
+      if (input.text !== undefined) {
+        await context.api.editMessageText(Number(input.telegramChatId), Number(input.telegramMessageId), input.text, {
+          reply_markup: input.replyMarkup ?? { inline_keyboard: [] },
+        });
+        return;
+      }
+      await context.api.editMessageReplyMarkup(Number(input.telegramChatId), Number(input.telegramMessageId), {
+        reply_markup: input.replyMarkup ?? { inline_keyboard: [] },
+      });
+    },
+
     async editPrivateCheckMessage(input) {
       await context.api.editMessageText(Number(input.telegramChatId), Number(input.telegramMessageId), input.text, {
         ...(input.replyMarkup ? { reply_markup: input.replyMarkup } : {}),

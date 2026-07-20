@@ -122,6 +122,7 @@ type Strings = Readonly<{
   rescheduleUsage: string;
   rescheduleSaved: string;
   rescheduleFailed: string;
+  reschedulePastDue: string;
   editSaved: string;
   editFailed: string;
   privateHelp: readonly string[];
@@ -255,6 +256,7 @@ const catalog: Record<Locale, Strings> = {
     rescheduleUsage: 'Send the new deadline, e.g. "today 22:00", "tomorrow 18:00", "friday", or "2026-07-20 22:00".',
     rescheduleSaved: 'New deadline saved.',
     rescheduleFailed: 'Could not read that deadline. Send a future time like "today 22:00", "tomorrow 18:00", or "2026-07-20 22:00".',
+    reschedulePastDue: 'That time has already passed. Send a future time like "today 22:00" or "tomorrow 18:00".',
     editSaved: 'Changes saved. Confirm the card in the group.',
     editFailed: 'Could not apply the changes. Open the card again.',
     privateHelp: [
@@ -395,6 +397,7 @@ const catalog: Record<Locale, Strings> = {
     rescheduleUsage: 'Отправьте новый срок, например «сегодня 22:00», «завтра 18:00», «в пятницу» или «2026-07-20 22:00».',
     rescheduleSaved: 'Новый срок сохранён.',
     rescheduleFailed: 'Не понял срок. Отправьте будущее время, например «сегодня 22:00», «завтра 18:00» или «2026-07-20 22:00».',
+    reschedulePastDue: 'Это время уже прошло. Отправьте будущий срок, например «сегодня 22:00» или «завтра 18:00».',
     editSaved: 'Изменения сохранены. Подтвердите карточку в группе.',
     editFailed: 'Не удалось применить изменения. Откройте карточку заново.',
     privateHelp: [
@@ -535,6 +538,7 @@ const catalog: Record<Locale, Strings> = {
     rescheduleUsage: 'Envía la nueva fecha, p. ej. «hoy 22:00», «mañana 18:00», «viernes» o «2026-07-20 22:00».',
     rescheduleSaved: 'Nueva fecha límite guardada.',
     rescheduleFailed: 'No entendí la fecha. Envía una hora futura como «hoy 22:00», «mañana 18:00» o «2026-07-20 22:00».',
+    reschedulePastDue: 'Esa hora ya pasó. Envía una fecha futura como «hoy 22:00» o «mañana 18:00».',
     editSaved: 'Cambios guardados. Confirma la tarjeta en el grupo.',
     editFailed: 'No se pudieron aplicar los cambios. Abre la tarjeta de nuevo.',
     privateHelp: [

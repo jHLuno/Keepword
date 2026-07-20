@@ -49,6 +49,12 @@ const callbackUpdateSchema = z
 
 export type CallbackMessenger = Readonly<{
   answerCallbackQuery: (input: Readonly<{ callbackQueryId: string; text: string }>) => Promise<void>;
+  editCallbackMessage?: (input: Readonly<{
+    replyMarkup?: InlineKeyboardMarkup;
+    telegramChatId: string;
+    telegramMessageId: string;
+    text?: string;
+  }>) => Promise<void>;
   isCurrentChatAdmin?: CurrentChatAdminChecker;
   editPrivateCheckMessage?: (input: Readonly<{
     replyMarkup?: InlineKeyboardMarkup;
@@ -166,6 +172,12 @@ export function createCommitmentActionCallbackHandler<TQueryResult extends PgQue
             telegramChatId: actionTelegramChatId,
           });
           await callbackTokens.claim(signedCallback);
+          if (callback.message.message_id !== undefined && messenger.editCallbackMessage) {
+            await messenger.editCallbackMessage({
+              telegramChatId,
+              telegramMessageId: String(callback.message.message_id),
+            });
+          }
           await createCommitmentRescheduleService(input.database, currentAdminChecker).begin({
             actorTelegramUserId: telegramUserId,
             commitmentId: resolvedCallback.commitmentId,

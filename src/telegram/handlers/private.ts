@@ -170,7 +170,9 @@ export function createPrivateUpdateHandler<TQueryResult extends PgQueryResultHKT
         if (error instanceof CommitmentRescheduleError) {
           await messenger.sendPrivateMessage({
             telegramUserId: message.from.id,
-            text: strings.rescheduleFailed,
+            text: error.code === 'RESCHEDULE_PAST_DUE_DATE'
+              ? strings.reschedulePastDue
+              : strings.rescheduleFailed,
           });
           return;
         }

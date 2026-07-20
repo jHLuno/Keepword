@@ -190,6 +190,47 @@ describe('commitment status actions', () => {
     expect(updated).toMatchObject({ status: 'completed' });
   });
 
+  test('removes private overdue reminder controls only after an authorized reschedule press', async () => {
+    const fixture = await createOpenCommitment();
+    await createUpdateCommitment(database.db)({ ...fixture, status: 'overdue' });
+    const nonce = (await createCallbackTokenService(database.db).issueCommitmentCallbacks({
+      actions: ['reschedule'], commitmentId: fixture.commitmentId,
+    })).reschedule;
+    if (!nonce) throw new Error('Expected reschedule nonce');
+    const callbackData = createSignedCallback('reschedule', nonce, 'callback-test-secret');
+    const handler = createCommitmentActionCallbackHandler({
+      callbackSigningSecret: 'callback-test-secret',
+      database: database.db,
+      isCurrentChatAdmin: () => Promise.resolve(false),
+    });
+    const answers: string[] = [];
+    const disabledCards: Array<Readonly<{ telegramChatId: string; telegramMessageId: string }>> = [];
+    const callbackAs = async (telegramUserId: number, callbackId: string): Promise<void> => handler({
+      payload: { callback_query: {
+        data: callbackData,
+        from: { language_code: 'ru', first_name: 'User', id: telegramUserId },
+        id: callbackId,
+        message: { chat: { id: telegramUserId, type: 'private' }, message_id: 77 },
+      } },
+      updateId: telegramUserId,
+    }, {
+      answerCallbackQuery: ({ text }) => { answers.push(text); return Promise.resolve(); },
+      editCallbackMessage: ({ telegramChatId, telegramMessageId }) => {
+        disabledCards.push({ telegramChatId, telegramMessageId });
+        return Promise.resolve();
+      },
+      sendPrivatePrompt: () => Promise.resolve(),
+    });
+
+    await callbackAs(8203, 'reschedule-denied');
+    expect(disabledCards).toEqual([]);
+    expect(answers).toEqual(['У вас нет прав на это действие.']);
+
+    await callbackAs(8201, 'reschedule-authorized');
+    expect(disabledCards).toEqual([{ telegramChatId: '8201', telegramMessageId: '77' }]);
+    expect(answers.at(-1)).toContain('В личном чате с Keepword');
+  });
+
   test('denies a private commitment callback to a participant and an administrator of another source chat', async () => {
     const fixture = await createOpenCommitment();
     const otherChat = await createConnectChat(database.db)({

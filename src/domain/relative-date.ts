@@ -117,7 +117,9 @@ export function resolveDueDate(text: string | null | undefined, reference: Date,
   if (trimmed.length === 0) {
     return null;
   }
-  const normalized = trimmed.toLowerCase();
+  // Telegram users commonly write "сегодня в 22:00". Repeated whitespace is
+  // presentation, not syntax, so normalize it before looking for relative cues.
+  const normalized = trimmed.toLowerCase().replace(/\s+/gu, ' ');
   const hasEveningCue = includesAny(normalized, eveningCues);
 
   // Explicit calendar date. With an offset it is an absolute instant; otherwise
