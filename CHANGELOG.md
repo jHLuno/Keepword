@@ -1,5 +1,23 @@
 [Earlier entries](docs/archive/CHANGELOG-pre-S04.md) · [2026-07-19 archive](docs/archive/CHANGELOG-2026-07-19-pre-filter.md) · [Trust Memory archive](docs/archive/CHANGELOG-2026-07-19-pre-trust-memory.md) · [Pre-calibration archive](docs/archive/CHANGELOG-2026-07-19-pre-calibration.md) · [Trust Memory implementation archive](docs/archive/CHANGELOG-2026-07-19-trust-memory-implementation.md)
 
+## 2026-07-21 — Contextual private `/check`
+
+### Added
+- Actor-bound, opaque one-time picker, detail, and back callbacks for private
+  `/check` (migration `0014_check_commitment_picker_tokens`).
+
+### Changed
+- `/check` now lists compact commitment selectors instead of repeating lifecycle
+  controls under every task. A selector opens one detail card with its own
+  Done, Blocked, Reschedule, and Back controls.
+- An authorised Done or Blocked action disables the detail card and sends a
+  fresh picker page. Copied selection and detail callbacks are rejected before
+  their owner's token is consumed.
+
+### Verified
+- Tests were updated for picker/detail, back navigation, and copied callback
+  rejection. Per operator request, no automated checks were run in this pass.
+
 ## 2026-07-21 — Group-native suggestion editing
 
 ### Added

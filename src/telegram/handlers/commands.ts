@@ -6,7 +6,13 @@ import type { RepositoryDatabase } from '../../repositories/database.js';
 import { createCallbackTokenService } from '../../services/callback-tokens.js';
 import { createReliabilityRepository } from '../../repositories/reliability.js';
 import { createSignedCallback } from '../callback-data.js';
-import { renderPrivateCheck, t, type InlineKeyboardMarkup, type PrivateCheckItem } from '../messages.js';
+import {
+  renderPrivateCheck,
+  renderPrivateCheckCommitmentDetail,
+  t,
+  type InlineKeyboardMarkup,
+  type PrivateCheckItem,
+} from '../messages.js';
 import { normalizeLocale, type Locale } from '../../i18n/index.js';
 
 export type TelegramCommand = Readonly<{
@@ -68,6 +74,12 @@ export function createPrivateCommandHandler<TQueryResult extends PgQueryResultHK
   callbackSigningSecret?: string,
 ): Readonly<{
   getCheckPage: (input: Readonly<{ languageCode?: string | undefined; page: number; telegramUserId: number }>) => Promise<PrivateCommandResult>;
+  getCheckCommitmentDetail: (input: Readonly<{
+    commitmentId: string;
+    languageCode?: string | undefined;
+    page: number;
+    telegramUserId: number;
+  }>) => Promise<PrivateCommandResult>;
   handle: (input: Readonly<{ command: TelegramCommand; languageCode?: string | undefined; telegramUserId: number }>) => Promise<PrivateCommandResult>;
 }> {
   async function connectedChats(telegramUserId: number): Promise<readonly ConnectedChat[]> {
@@ -154,19 +166,13 @@ export function createPrivateCommandHandler<TQueryResult extends PgQueryResultHK
     }
     const callbackTokens = createCallbackTokenService(database);
     for (const [index, row] of pageRows.entries()) {
-      const callbacks = await callbackTokens.issueCommitmentCallbacks({
-        actions: ['complete', 'block', 'reschedule'],
+      const callback = await callbackTokens.issueCheckCommitmentCallback({
         commitmentId: row.id,
+        page: input.page,
+        telegramUserId: input.telegramUserId,
       });
-      if (!callbacks.complete || !callbacks.block || !callbacks.reschedule) {
-        throw new Error('Expected commitment callbacks');
-      }
       items[index] = {
-        callbacks: {
-          block: createSignedCallback('block', callbacks.block, callbackSigningSecret),
-          complete: createSignedCallback('complete', callbacks.complete, callbackSigningSecret),
-          reschedule: createSignedCallback('reschedule', callbacks.reschedule, callbackSigningSecret),
-        },
+        callback: createSignedCallback('check_commitment', callback, callbackSigningSecret),
         chatTitle: row.chatTitle,
         dueDateText: row.dueDateText,
         status: row.status,
@@ -190,8 +196,80 @@ export function createPrivateCommandHandler<TQueryResult extends PgQueryResultHK
     return { handled: true, ...renderPrivateCheck(locale, { items, nextPageCallback, previousPageCallback, reliability }) };
   }
 
+  async function getCheckCommitmentDetail(input: Readonly<{
+    commitmentId: string;
+    languageCode?: string | undefined;
+    page: number;
+    telegramUserId: number;
+  }>): Promise<PrivateCommandResult> {
+    const locale = normalizeLocale(input.languageCode);
+    if (!Number.isSafeInteger(input.page) || input.page < 0 || !await hasCompletedNotificationOnboarding(input.telegramUserId)) {
+      return { handled: false };
+    }
+    const row = (
+      await database
+        .select({
+          chatTitle: chats.title,
+          dueDateText: commitments.dueDateText,
+          id: commitments.id,
+          status: commitments.status,
+          title: commitments.title,
+        })
+        .from(commitments)
+        .innerJoin(users, eq(commitments.assigneeUserId, users.id))
+        .innerJoin(chats, and(eq(commitments.chatId, chats.id), eq(commitments.workspaceId, chats.workspaceId)))
+        .innerJoin(chatMemberships, and(
+          eq(chatMemberships.chatId, commitments.chatId),
+          eq(chatMemberships.workspaceId, commitments.workspaceId),
+          eq(chatMemberships.userId, commitments.assigneeUserId),
+        ))
+        .where(and(
+          eq(commitments.id, input.commitmentId),
+          eq(users.telegramUserId, input.telegramUserId),
+          isNotNull(users.privateChatStartedAt),
+          isNotNull(chatMemberships.notificationsConnectedAt),
+          eq(chats.isActive, true),
+          inArray(commitments.status, ['open', 'overdue', 'blocked']),
+        ))
+        .limit(1)
+    )[0] as CheckRow | undefined;
+    if (!row) {
+      return { handled: false };
+    }
+    if (!callbackSigningSecret) {
+      return { handled: true, text: t(locale).toastUnavailable };
+    }
+    const callbackTokens = createCallbackTokenService(database);
+    const callbacks = await callbackTokens.issueCommitmentCallbacks({
+      actions: ['complete', 'block', 'reschedule'],
+      commitmentId: row.id,
+      page: input.page,
+      telegramUserId: input.telegramUserId,
+    });
+    if (!callbacks.complete || !callbacks.block || !callbacks.reschedule) {
+      throw new Error('Expected contextual commitment callbacks');
+    }
+    const back = await callbackTokens.issueCheckBackCallback({ page: input.page, telegramUserId: input.telegramUserId });
+    return {
+      handled: true,
+      ...renderPrivateCheckCommitmentDetail(locale, {
+        callbacks: {
+          back: createSignedCallback('check_back', back, callbackSigningSecret),
+          block: createSignedCallback('block', callbacks.block, callbackSigningSecret),
+          complete: createSignedCallback('complete', callbacks.complete, callbackSigningSecret),
+          reschedule: createSignedCallback('reschedule', callbacks.reschedule, callbackSigningSecret),
+        },
+        chatTitle: row.chatTitle,
+        dueDateText: row.dueDateText,
+        status: row.status,
+        title: row.title,
+      }),
+    };
+  }
+
   return {
     getCheckPage,
+    getCheckCommitmentDetail,
     async handle(input) {
       const locale = normalizeLocale(input.languageCode);
       const strings = t(locale);

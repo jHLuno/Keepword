@@ -350,6 +350,8 @@ export const callbackTokens = pgTable(
     suggestionId: uuid('suggestion_id'),
     commitmentId: uuid('commitment_id'),
     checkPage: integer('check_page'),
+    // Present only on actor-bound private /check callbacks.  The real source
+    // commitment and page are still resolved server-side from this row.
     telegramUserId: bigint('telegram_user_id', { mode: 'number' }),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     consumedAt: timestamp('consumed_at', { withTimezone: true }),

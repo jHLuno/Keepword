@@ -67,6 +67,11 @@ export type CallbackMessenger = Readonly<{
     telegramMessageId: string;
     text: string;
   }>) => Promise<void>;
+  sendPrivateCheckMessage?: (input: Readonly<{
+    replyMarkup?: InlineKeyboardMarkup;
+    telegramUserId: number;
+    text: string;
+  }>) => Promise<void>;
   sendPrivatePrompt?: (input: Readonly<{ telegramUserId: number; text: string }>) => Promise<void>;
   sendActionFeedback?: (input: Readonly<{ telegramChatId: string; text: string }>) => Promise<void>;
 }>;
@@ -138,9 +143,9 @@ export function createCommitmentActionCallbackHandler<TQueryResult extends PgQue
       const callbackTokens = createCallbackTokenService(input.database);
       const resolvedCallback = await callbackTokens.resolve(signedCallback);
       const currentAdminChecker = input.isCurrentChatAdmin ?? messenger.isCurrentChatAdmin ?? (() => Promise.resolve(false));
-      if (resolvedCallback.kind === 'check_page') {
+      if (resolvedCallback.kind === 'check_navigation') {
         if (
-          signedCallback.action !== 'check_page' ||
+          (signedCallback.action !== 'check_page' && signedCallback.action !== 'check_back') ||
           callback.message.chat.type !== 'private' ||
           callback.message.message_id === undefined ||
           resolvedCallback.telegramUserId !== telegramUserId
@@ -165,7 +170,48 @@ export function createCommitmentActionCallbackHandler<TQueryResult extends PgQue
         await messenger.answerCallbackQuery({ callbackQueryId: callback.id, text: strings.toastPageUpdated });
         return;
       }
+      if (resolvedCallback.kind === 'check_commitment') {
+        if (
+          signedCallback.action !== 'check_commitment' ||
+          callback.message.chat.type !== 'private' ||
+          callback.message.message_id === undefined ||
+          resolvedCallback.telegramUserId !== telegramUserId ||
+          !messenger.editPrivateCheckMessage
+        ) {
+          throw new CommitmentUpdateError('UNAUTHORIZED');
+        }
+        const detail = await createPrivateCommandHandler(input.database, input.callbackSigningSecret).getCheckCommitmentDetail({
+          commitmentId: resolvedCallback.commitmentId,
+          languageCode: callback.from.language_code,
+          page: resolvedCallback.page,
+          telegramUserId,
+        });
+        if (!detail.handled || !detail.text) {
+          throw new CallbackTokenError();
+        }
+        await callbackTokens.claim(signedCallback);
+        await messenger.editPrivateCheckMessage({
+          telegramChatId,
+          telegramMessageId: String(callback.message.message_id),
+          text: detail.text,
+          ...(detail.replyMarkup ? { replyMarkup: detail.replyMarkup } : {}),
+        });
+        await messenger.answerCallbackQuery({ callbackQueryId: callback.id, text: strings.toastPageUpdated });
+        return;
+      }
       if (resolvedCallback.kind === 'commitment') {
+        const isActorBoundPrivateCheckAction = resolvedCallback.telegramUserId !== null || resolvedCallback.page !== null;
+        if (
+          isActorBoundPrivateCheckAction &&
+          (
+            callback.message.chat.type !== 'private' ||
+            callback.message.message_id === undefined ||
+            resolvedCallback.telegramUserId !== telegramUserId ||
+            resolvedCallback.page === null
+          )
+        ) {
+          throw new CommitmentUpdateError('UNAUTHORIZED');
+        }
         const commitmentAuthorization = createAuthorizeCommitmentAction(input.database, currentAdminChecker);
         const actionTelegramChatId = callback.message.chat.type === 'private'
           ? await resolveCommitmentTelegramChatId(input.database, resolvedCallback.commitmentId)
@@ -229,6 +275,20 @@ export function createCommitmentActionCallbackHandler<TQueryResult extends PgQue
           await messenger.editCallbackMessage({ telegramChatId, telegramMessageId: String(callback.message.message_id) });
         }
         await messenger.answerCallbackQuery({ callbackQueryId: callback.id, text: strings.toastStatusUpdated });
+        if (isActorBoundPrivateCheckAction && resolvedCallback.page !== null && messenger.sendPrivateCheckMessage) {
+          const picker = await createPrivateCommandHandler(input.database, input.callbackSigningSecret).getCheckPage({
+            languageCode: callback.from.language_code,
+            page: resolvedCallback.page,
+            telegramUserId,
+          });
+          if (picker.text) {
+            await messenger.sendPrivateCheckMessage({
+              telegramUserId,
+              text: picker.text,
+              ...(picker.replyMarkup ? { replyMarkup: picker.replyMarkup } : {}),
+            });
+          }
+        }
         input.logger?.info('commitment_updated', {
           telegramChatId,
           telegramUserId: String(telegramUserId),

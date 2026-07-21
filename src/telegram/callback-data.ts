@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
-export type CallbackAction = 'block' | 'cancel' | 'check_page' | 'complete' | 'confirm' | 'edit' | 'open' | 'overdue' | 'reject' | 'reschedule';
+export type CallbackAction = 'block' | 'cancel' | 'check_back' | 'check_commitment' | 'check_page' | 'complete' | 'confirm' | 'edit' | 'open' | 'overdue' | 'reject' | 'reschedule';
 
 export type SignedCallback = Readonly<{
   action: CallbackAction;
@@ -16,7 +16,7 @@ export class CallbackDataError extends Error {
   }
 }
 
-const callbackPattern = /^kw:(block|cancel|check_page|complete|confirm|edit|open|overdue|reject|reschedule):([A-Za-z0-9_-]{16,32}):([A-Za-z0-9_-]{16})$/;
+const callbackPattern = /^kw:(block|cancel|check_back|check_commitment|check_page|complete|confirm|edit|open|overdue|reject|reschedule):([A-Za-z0-9_-]{16,32}):([A-Za-z0-9_-]{16})$/;
 
 function createSignature(action: CallbackAction, nonce: string, callbackSigningSecret: string): Buffer {
   return Buffer.from(

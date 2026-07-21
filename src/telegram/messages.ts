@@ -27,7 +27,15 @@ type CommitmentAction = 'block' | 'cancel' | 'complete' | 'open' | 'reschedule';
 export type CommitmentCallbackNonces = Readonly<Record<CommitmentAction, string>>;
 
 export type PrivateCheckItem = Readonly<{
-  callbacks?: Readonly<Pick<CommitmentCallbackNonces, 'block' | 'complete' | 'reschedule'>>;
+  callback?: string | undefined;
+  chatTitle: string;
+  dueDateText: string | null;
+  status: 'blocked' | 'open' | 'overdue';
+  title: string;
+}>;
+
+export type PrivateCheckCommitmentDetail = Readonly<{
+  callbacks: Readonly<Pick<CommitmentCallbackNonces, 'block' | 'complete' | 'reschedule'>> & Readonly<{ back: string }>;
   chatTitle: string;
   dueDateText: string | null;
   status: 'blocked' | 'open' | 'overdue';
@@ -87,6 +95,9 @@ type Strings = Readonly<{
   checkOpen: string;
   checkBlocked: string;
   checkEmpty: string;
+  checkDetailChat: string;
+  checkDetailHeading: string;
+  checkDetailStatus: string;
   reliabilitySelfHeading: string;
   reliabilityLine: (input: Readonly<{ eligible: number; late: number; onTime: number; overdue: number }>) => string;
   navPrevious: string;
@@ -226,6 +237,9 @@ const catalog: Record<Locale, Strings> = {
     checkOpen: '🟡 Open',
     checkBlocked: '🟠 Blocked',
     checkEmpty: '— no active commitments',
+    checkDetailChat: 'Chat',
+    checkDetailHeading: '📌 Commitment',
+    checkDetailStatus: 'Status',
     reliabilitySelfHeading: '🤝 My reliability · last 30 days',
     reliabilityLine: (r) => `On time: ${r.onTime}/${r.eligible} · Late: ${r.late} · At risk: ${r.overdue}`,
     navPrevious: '◀ Back',
@@ -377,6 +391,9 @@ const catalog: Record<Locale, Strings> = {
     checkOpen: '🟡 Открытые',
     checkBlocked: '🟠 Есть блокер',
     checkEmpty: '— активных обязательств нет',
+    checkDetailChat: 'Группа',
+    checkDetailHeading: '📌 Обязательство',
+    checkDetailStatus: 'Статус',
     reliabilitySelfHeading: '🤝 Моя надёжность · последние 30 дней',
     reliabilityLine: (r) => `Вовремя: ${r.onTime}/${r.eligible} · С опозданием: ${r.late} · Риск: ${r.overdue}`,
     navPrevious: '◀ Назад',
@@ -528,6 +545,9 @@ const catalog: Record<Locale, Strings> = {
     checkOpen: '🟡 Abiertos',
     checkBlocked: '🟠 Bloqueados',
     checkEmpty: '— no hay compromisos activos',
+    checkDetailChat: 'Grupo',
+    checkDetailHeading: '📌 Compromiso',
+    checkDetailStatus: 'Estado',
     reliabilitySelfHeading: '🤝 Mi fiabilidad · últimos 30 días',
     reliabilityLine: (r) => `A tiempo: ${r.onTime}/${r.eligible} · Tarde: ${r.late} · En riesgo: ${r.overdue}`,
     navPrevious: '◀ Atrás',
@@ -749,10 +769,11 @@ export function renderPrivateCheck(locale: Locale, input: Readonly<{
   if (input.items.length === 0) {
     return { text };
   }
-  const inlineKeyboard = input.items.flatMap((item) => item.callbacks ? [[
-    { callback_data: item.callbacks.complete, text: strings.btnComplete },
-    { callback_data: item.callbacks.block, text: strings.btnBlock },
-    { callback_data: item.callbacks.reschedule, text: strings.btnReschedule },
+  const inlineKeyboard = input.items.flatMap((item) => item.callback ? [[
+    {
+      callback_data: item.callback,
+      text: `[${item.chatTitle}] ${item.title}`.slice(0, 64),
+    },
   ]] : []);
   const navigation = [
     ...(input.previousPageCallback ? [{ callback_data: input.previousPageCallback, text: strings.navPrevious }] : []),
@@ -762,6 +783,38 @@ export function renderPrivateCheck(locale: Locale, input: Readonly<{
     inlineKeyboard.push(navigation);
   }
   return inlineKeyboard.length > 0 ? { replyMarkup: { inline_keyboard: inlineKeyboard }, text } : { text };
+}
+
+export function renderPrivateCheckCommitmentDetail(
+  locale: Locale,
+  item: PrivateCheckCommitmentDetail,
+): Readonly<{ replyMarkup: InlineKeyboardMarkup; text: string }> {
+  const strings = t(locale);
+  const status = item.status === 'overdue'
+    ? strings.checkOverdue
+    : item.status === 'blocked'
+      ? strings.checkBlocked
+      : strings.checkOpen;
+  const dueLine = item.dueDateText?.trim() ? `\n${strings.dueLabel}: ${item.dueDateText.trim()}` : '';
+  return {
+    replyMarkup: {
+      inline_keyboard: [
+        [
+          { callback_data: item.callbacks.complete, text: strings.btnComplete },
+          { callback_data: item.callbacks.block, text: strings.btnBlock },
+          { callback_data: item.callbacks.reschedule, text: strings.btnReschedule },
+        ],
+        [{ callback_data: item.callbacks.back, text: strings.navPrevious }],
+      ],
+    },
+    text: [
+      strings.checkDetailHeading,
+      '',
+      item.title,
+      `${strings.checkDetailChat}: ${item.chatTitle}`,
+      `${strings.checkDetailStatus}: ${status}`,
+    ].join('\n') + dueLine,
+  };
 }
 
 export function renderReminderCard(

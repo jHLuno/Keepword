@@ -1,5 +1,28 @@
 [Earlier entries](docs/archive/HANDOFF-pre-S04.md) · [2026-07-19 archive](docs/archive/HANDOFF-2026-07-19-pre-filter.md) · [Trust Memory archive](docs/archive/HANDOFF-2026-07-19-pre-trust-memory.md) · [Pre-calibration archive](docs/archive/HANDOFF-2026-07-19-pre-calibration.md) · [Trust Memory implementation archive](docs/archive/HANDOFF-2026-07-19-trust-memory-implementation.md)
 
+## 2026-07-21 — Contextual `/check` handoff
+
+### Done
+- Private `/check` is now a per-user picker followed by one selected
+  commitment detail card; lifecycle actions are no longer visually ambiguous.
+- Picker, detail, and Back callbacks are opaque, actor-bound, and one-time;
+  the selected commitment is re-read from the caller's active connected chats
+  before its detail is shown.
+- Done/Blocked disables the selected detail card and produces a fresh picker.
+- Added forward-only migration `0014_check_commitment_picker_tokens` and
+  updated `PROJECT.md`.
+
+### Not done
+- Task 4: explicit private-vs-group `/settings` UX.
+
+### Risks / blockers
+- Railway must apply migration `0014` before this web deployment. No automated
+  checks were run in this pass at the operator's request.
+
+### Next recommended step
+- Implement the settings-scope UX, then push/deploy so Railway applies
+  migrations `0013` and `0014` with the configured pre-deploy command.
+
 ## 2026-07-21 — Group edit UX handoff
 
 ### Done

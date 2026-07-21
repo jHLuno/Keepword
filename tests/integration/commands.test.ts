@@ -269,7 +269,7 @@ describe('Telegram commands', () => {
     ]);
   });
 
-  test('paginates actionable private checks with source-chat labels and signed page controls', async () => {
+  test('paginates private commitment pickers with source-chat labels and signed page controls', async () => {
     const actorTelegramUserId = 9840;
     const firstChat = await createConnectChat(database.db)({
       adminTelegramUserId: String(actorTelegramUserId), telegramChatId: '-1009840', timezone: 'UTC', title: 'First source',
@@ -306,7 +306,10 @@ describe('Telegram commands', () => {
     expect(firstPage.text).toContain('[Second source] Task 2 · день 2');
     expect(firstPage.text).toContain('Task 5');
     expect(firstPage.text).not.toContain('Task 6');
-    expect(firstPage.replyMarkup.inline_keyboard.flat().filter((button) => button.text === 'Готово')).toHaveLength(5);
+    expect(firstPage.replyMarkup.inline_keyboard.flat().filter((button) => button.text === 'Готово')).toHaveLength(0);
+    expect(firstPage.replyMarkup.inline_keyboard.flat().filter((button) => button.text.includes('Task'))).toHaveLength(5);
+    expect(firstPage.replyMarkup.inline_keyboard.flat().find((button) => button.text.includes('Task 1'))?.callback_data)
+      .toMatch(/^kw:check_commitment:[A-Za-z0-9_-]{16,32}:[A-Za-z0-9_-]{16}$/);
     const next = firstPage.replyMarkup.inline_keyboard.flat().find((button) => button.text === 'Вперёд ▶');
     if (!next) throw new Error('Expected next-page callback');
     expect(next.callback_data).toMatch(/^kw:check_page:[A-Za-z0-9_-]{16,32}:[A-Za-z0-9_-]{16}$/);
@@ -439,7 +442,7 @@ describe('Telegram commands', () => {
     ]));
   });
 
-  test('allows the assignee to complete a commitment from their private check', async () => {
+  test('opens one private check detail at a time, then completes only the selected commitment', async () => {
     const actorTelegramUserId = 9850;
     const chat = await createConnectChat(database.db)({
       adminTelegramUserId: String(actorTelegramUserId), telegramChatId: '-1009850', timezone: 'UTC', title: 'Action source',
@@ -453,26 +456,111 @@ describe('Telegram commands', () => {
     }).returning({ id: commitments.id }))[0];
     if (!commitment) throw new Error('Expected commitment');
 
-    const cards: Array<Readonly<{ replyMarkup?: { inline_keyboard: { callback_data: string; text: string }[][] } }>> = [];
+    const secondCommitment = (await database.db.insert(commitments).values({
+      assigneeUserId: actor.id, chatId: chat.chatId, status: 'open', title: 'Other check commitment', workspaceId: chat.workspaceId,
+    }).returning({ id: commitments.id }))[0];
+    if (!secondCommitment) throw new Error('Expected second commitment');
+    const cards: Array<Readonly<{ replyMarkup?: { inline_keyboard: { callback_data: string; text: string }[][] }; text: string }>> = [];
     await createPrivateUpdateHandler({ callbackSigningSecret: 'check-test-secret', database: database.db })(privateUpdate(actorTelegramUserId, '/check'), {
       sendPrivateMessage(input) {
         cards.push(input);
         return Promise.resolve();
       },
     });
-    const complete = cards[0]?.replyMarkup?.inline_keyboard.flat().find((button) => button.text === 'Готово');
-    if (!complete) throw new Error('Expected complete callback');
-    await createCommitmentActionCallbackHandler({ callbackSigningSecret: 'check-test-secret', database: database.db })({
+    const select = cards[0]?.replyMarkup?.inline_keyboard.flat().find((button) => button.text.includes('Complete from check'));
+    if (!select) throw new Error('Expected selection callback');
+    const edited: Array<Readonly<{ replyMarkup?: { inline_keyboard: { callback_data: string; text: string }[][] }; text: string }>> = [];
+    const answers: string[] = [];
+    const callbackHandler = createCommitmentActionCallbackHandler({ callbackSigningSecret: 'check-test-secret', database: database.db });
+    await callbackHandler({
+      payload: { callback_query: {
+        data: select.callback_data,
+        from: { language_code: 'ru', first_name: 'Copied', id: 9852 },
+        id: 'copied-selection',
+        message: { chat: { id: 9852, type: 'private' }, message_id: 1 },
+      } },
+      updateId: 9852,
+    }, {
+      answerCallbackQuery: ({ text }) => { answers.push(text); return Promise.resolve(); },
+      editPrivateCheckMessage(input) { edited.push(input); return Promise.resolve(); },
+    });
+    expect(answers.at(-1)).toBe('У вас нет прав на это действие.');
+    expect(edited).toEqual([]);
+    await callbackHandler({
+      payload: { callback_query: {
+        data: select.callback_data,
+        from: { language_code: 'ru', first_name: 'Actor', id: actorTelegramUserId },
+        id: 'select-from-check',
+        message: { chat: { id: actorTelegramUserId, type: 'private' }, message_id: 1 },
+      } },
+      updateId: 9850,
+    }, {
+      answerCallbackQuery: ({ text }) => { answers.push(text); return Promise.resolve(); },
+      editPrivateCheckMessage(input) { edited.push(input); return Promise.resolve(); },
+    });
+    const detail = edited[0];
+    expect(detail?.text).toContain('Complete from check');
+    expect(detail?.text).not.toContain('Other check commitment');
+    const back = detail?.replyMarkup?.inline_keyboard.flat().find((button) => button.text === '◀ Назад');
+    if (!back) throw new Error('Expected detail back callback');
+    await callbackHandler({
+      payload: { callback_query: {
+        data: back.callback_data,
+        from: { language_code: 'ru', first_name: 'Actor', id: actorTelegramUserId },
+        id: 'back-to-picker',
+        message: { chat: { id: actorTelegramUserId, type: 'private' }, message_id: 1 },
+      } },
+      updateId: 9854,
+    }, {
+      answerCallbackQuery: ({ text }) => { answers.push(text); return Promise.resolve(); },
+      editPrivateCheckMessage(input) { edited.push(input); return Promise.resolve(); },
+    });
+    const pickerAgain = edited[1];
+    expect(pickerAgain?.text).toContain('Complete from check');
+    const selectAgain = pickerAgain?.replyMarkup?.inline_keyboard.flat().find((button) => button.text.includes('Complete from check'));
+    if (!selectAgain) throw new Error('Expected fresh selection callback');
+    await callbackHandler({
+      payload: { callback_query: {
+        data: selectAgain.callback_data,
+        from: { language_code: 'ru', first_name: 'Actor', id: actorTelegramUserId },
+        id: 'select-again',
+        message: { chat: { id: actorTelegramUserId, type: 'private' }, message_id: 1 },
+      } },
+      updateId: 9855,
+    }, {
+      answerCallbackQuery: ({ text }) => { answers.push(text); return Promise.resolve(); },
+      editPrivateCheckMessage(input) { edited.push(input); return Promise.resolve(); },
+    });
+    const complete = edited[2]?.replyMarkup?.inline_keyboard.flat().find((button) => button.text === 'Готово');
+    if (!complete) throw new Error('Expected fresh detail complete callback');
+    await callbackHandler({
+      payload: { callback_query: {
+        data: complete.callback_data,
+        from: { language_code: 'ru', first_name: 'Copied', id: 9852 },
+        id: 'copied-detail-action',
+        message: { chat: { id: 9852, type: 'private' }, message_id: 1 },
+      } },
+      updateId: 9853,
+    }, { answerCallbackQuery: ({ text }) => { answers.push(text); return Promise.resolve(); } });
+    expect(answers.at(-1)).toBe('У вас нет прав на это действие.');
+    const refreshedPickers: Array<Readonly<{ text: string }>> = [];
+    await callbackHandler({
       payload: { callback_query: {
         data: complete.callback_data,
         from: { language_code: 'ru', first_name: 'Actor', id: actorTelegramUserId },
         id: 'complete-from-check',
         message: { chat: { id: actorTelegramUserId, type: 'private' }, message_id: 1 },
       } },
-      updateId: 9850,
-    }, { answerCallbackQuery: () => Promise.resolve() });
+      updateId: 9851,
+    }, {
+      answerCallbackQuery: ({ text }) => { answers.push(text); return Promise.resolve(); },
+      editCallbackMessage: () => Promise.resolve(),
+      sendPrivateCheckMessage(input) { refreshedPickers.push(input); return Promise.resolve(); },
+    });
 
     expect((await database.db.select().from(commitments).where(eq(commitments.id, commitment.id)))[0]).toMatchObject({ status: 'completed' });
+    expect((await database.db.select().from(commitments).where(eq(commitments.id, secondCommitment.id)))[0]).toMatchObject({ status: 'open' });
+    expect(refreshedPickers[0]?.text).toContain('Other check commitment');
   });
 
   test('analyzes only the replied source message for group /keep', async () => {
