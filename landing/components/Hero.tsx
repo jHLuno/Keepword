@@ -20,7 +20,7 @@ export function Hero() {
           playsInline
           preload="auto"
         >
-          <source src="/night.mp4" type="video/mp4" />
+          <source src="/night.webm" type="video/webm" />
         </video>
         <div className="absolute inset-0 [background:linear-gradient(180deg,rgba(8,8,8,0.72)_0%,rgba(8,8,8,0.5)_38%,rgba(8,8,8,0.8)_78%,var(--color-bg)_100%)]" />
         <div className="absolute inset-0 [background:radial-gradient(120%_80%_at_50%_0%,transparent_40%,rgba(8,8,8,0.6)_100%)]" />
