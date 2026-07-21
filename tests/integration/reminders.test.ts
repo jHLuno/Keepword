@@ -58,6 +58,7 @@ async function createFixture(input: Readonly<{
       .values({
         assigneeUserId: membership.userId,
         chatId: chat.chatId,
+        createdAt: new Date(input.dueAt.getTime() - 24 * 60 * 60 * 1_000),
         dueAt: input.dueAt,
         dueDateText: 'сегодня',
         title: 'Отправить КП клиенту',
@@ -86,35 +87,34 @@ afterAll(async () => {
 });
 
 describe('private commitment reminders', () => {
-  test('sends a due reminder only to an onboarded assignee', async () => {
-    const dueNow = new Date('2026-07-18T12:00:00.000Z');
-    const fixture = await createFixture({ dueAt: dueNow });
+  test('sends an upcoming reminder ten minutes before an onboarded assignee deadline', async () => {
+    const dueAt = new Date('2026-07-18T12:10:00.000Z');
+    const fixture = await createFixture({ dueAt });
     const runReminderJob = createReminderJob({
       callbackSigningSecret: 'callback-test-secret',
       database: database.db,
       messenger: fixture.telegram,
     });
 
-    await runReminderJob(dueNow);
+    await runReminderJob(new Date('2026-07-18T12:00:00.000Z'));
 
     expect(fixture.telegram.privateMessagesFor(fixture.assigneeTelegramUserId)).toHaveLength(1);
     expect(fixture.telegram.groupMessages).toHaveLength(0);
   });
 
-  test('does not deliver the same reminder twice when the job repeats', async () => {
-    const dueNow = new Date('2026-07-18T13:00:00.000Z');
-    await createFixture({ dueAt: dueNow });
-    const messages: string[] = [];
+  test('does not send a second reminder at the deadline after the upcoming reminder', async () => {
+    const dueAt = new Date('2026-07-18T13:10:00.000Z');
+    const fixture = await createFixture({ dueAt });
     const runReminderJob = createReminderJob({
       callbackSigningSecret: 'callback-test-secret',
       database: database.db,
-      messenger: { sendPrivateMessage: ({ text }) => { messages.push(text); return Promise.resolve(); } },
+      messenger: fixture.telegram,
     });
 
-    await runReminderJob(dueNow);
-    await runReminderJob(dueNow);
+    await runReminderJob(new Date('2026-07-18T13:00:00.000Z'));
+    await runReminderJob(dueAt);
 
-    expect(messages).toHaveLength(1);
+    expect(fixture.telegram.privateMessagesFor(fixture.assigneeTelegramUserId)).toHaveLength(1);
   });
 
   test('does not send an overdue reminder to an assignee without private onboarding', async () => {
@@ -135,8 +135,8 @@ describe('private commitment reminders', () => {
   });
 
   test('does not retry a reminder when Telegram rejects after sending begins', async () => {
-    const dueNow = new Date('2026-07-18T14:00:00.000Z');
-    const fixture = await createFixture({ dueAt: dueNow });
+    const dueAt = new Date('2026-07-18T14:10:00.000Z');
+    const fixture = await createFixture({ dueAt });
     let telegramAttempts = 0;
     const runReminderJob = createReminderJob({
       callbackSigningSecret: 'callback-test-secret',
@@ -148,8 +148,8 @@ describe('private commitment reminders', () => {
       } },
     });
 
-    await runReminderJob(dueNow);
-    await runReminderJob(dueNow);
+    await runReminderJob(new Date('2026-07-18T14:00:00.000Z'));
+    await runReminderJob(new Date('2026-07-18T14:00:00.000Z'));
 
     expect(telegramAttempts).toBe(1);
     expect((await database.db.select().from(notificationDeliveries).where(eq(notificationDeliveries.commitmentId, fixture.commitmentId)))[0])
@@ -157,8 +157,8 @@ describe('private commitment reminders', () => {
   });
 
   test('retries when starting delivery fails before Telegram is called', async () => {
-    const dueNow = new Date('2026-07-18T14:30:00.000Z');
-    const fixture = await createFixture({ dueAt: dueNow });
+    const dueAt = new Date('2026-07-18T14:40:00.000Z');
+    const fixture = await createFixture({ dueAt });
     const deliveries = createDeliveriesRepository(database.db);
     let telegramSends = 0;
     const failedStartConfig = {
@@ -169,7 +169,7 @@ describe('private commitment reminders', () => {
     };
     const withFailedStart = createReminderJob(failedStartConfig);
 
-    await withFailedStart(dueNow);
+    await withFailedStart(new Date('2026-07-18T14:30:00.000Z'));
     expect(telegramSends).toBe(0);
     expect((await database.db.select().from(notificationDeliveries).where(eq(notificationDeliveries.commitmentId, fixture.commitmentId)))[0])
       .toMatchObject({ errorCode: 'DELIVERY_START_FAILED', status: 'failed' });
@@ -179,14 +179,14 @@ describe('private commitment reminders', () => {
       database: database.db,
       messenger: { sendPrivateMessage: () => { telegramSends += 1; return Promise.resolve(); } },
     });
-    await retry(dueNow);
+    await retry(new Date('2026-07-18T14:30:00.000Z'));
 
     expect(telegramSends).toBe(1);
   });
 
   test('does not retry after Telegram succeeds when marking delivery sent fails', async () => {
-    const dueNow = new Date('2026-07-18T15:00:00.000Z');
-    const fixture = await createFixture({ dueAt: dueNow });
+    const dueAt = new Date('2026-07-18T15:10:00.000Z');
+    const fixture = await createFixture({ dueAt });
     const deliveries = createDeliveriesRepository(database.db);
     let telegramSends = 0;
     const failingPersistenceConfig = {
@@ -197,7 +197,7 @@ describe('private commitment reminders', () => {
     };
     const sendWithFailedPersistence = createReminderJob(failingPersistenceConfig);
 
-    await sendWithFailedPersistence(dueNow);
+    await sendWithFailedPersistence(new Date('2026-07-18T15:00:00.000Z'));
     expect(telegramSends).toBe(1);
     expect((await database.db.select().from(notificationDeliveries).where(eq(notificationDeliveries.commitmentId, fixture.commitmentId)))[0])
       .toMatchObject({ errorCode: null, status: 'processing' });
@@ -207,7 +207,7 @@ describe('private commitment reminders', () => {
       database: database.db,
       messenger: { sendPrivateMessage: () => { telegramSends += 1; return Promise.resolve(); } },
     });
-    await retry(dueNow);
+    await retry(new Date('2026-07-18T15:00:00.000Z'));
     expect(telegramSends).toBe(1);
   });
 });

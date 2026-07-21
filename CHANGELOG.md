@@ -1,5 +1,23 @@
 [Earlier entries](docs/archive/CHANGELOG-pre-S04.md) · [2026-07-19 archive](docs/archive/CHANGELOG-2026-07-19-pre-filter.md) · [Trust Memory archive](docs/archive/CHANGELOG-2026-07-19-pre-trust-memory.md) · [Pre-calibration archive](docs/archive/CHANGELOG-2026-07-19-pre-calibration.md) · [Trust Memory implementation archive](docs/archive/CHANGELOG-2026-07-19-trust-memory-implementation.md)
 
+## 2026-07-21 — Преддедлайновые напоминания
+
+### Changed
+- Личное напоминание об обязательстве теперь отправляется за 10 минут до
+  точного срока, а не в момент дедлайна.
+- В день дедлайна повторное сообщение не отправляется; открытая задача
+  переходит в существующий privacy-safe flow просрочки со следующего
+  локального дня.
+
+### Verified
+- `pnpm vitest run tests/integration/reminders.test.ts` — passed (6 tests).
+- `pnpm typecheck` — passed.
+
+### Notes
+- Для live-проверки нужен deploy web и worker в Railway: создать новую
+  подтверждённую задачу со сроком более чем через 10 минут и проверить
+  `reminder_sent` в логах worker.
+
 ## 2026-07-21 — Explicit settings scope
 
 ### Changed

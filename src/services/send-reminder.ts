@@ -22,7 +22,7 @@ export type SendReminder = (input: Readonly<{
   commitmentId: string;
   dueDateText: string | null;
   idempotencyKey: string;
-  kind: 'due' | 'overdue';
+  kind: 'upcoming' | 'overdue';
   language: string;
   status: 'open' | 'overdue';
   title: string;

@@ -44,6 +44,7 @@ export function createReminderJob<TQueryResult extends PgQueryResultHKT>(input: 
         assigneeUserId: commitments.assigneeUserId,
         chatId: commitments.chatId,
         commitmentId: commitments.id,
+        createdAt: commitments.createdAt,
         dueAt: commitments.dueAt,
         dueDateText: commitments.dueDateText,
         language: commitments.language,
@@ -70,7 +71,7 @@ export function createReminderJob<TQueryResult extends PgQueryResultHKT>(input: 
           eq(commitments.status, 'open'),
           eq(chats.isActive, true),
           isNotNull(commitments.dueAt),
-          lte(commitments.dueAt, now),
+          lte(commitments.dueAt, new Date(now.getTime() + 10 * 60 * 1_000)),
         ),
       );
 
@@ -94,7 +95,14 @@ export function createReminderJob<TQueryResult extends PgQueryResultHKT>(input: 
         });
         continue;
       }
-      const kind = dueLocalDate === nowLocalDate ? 'due' : 'overdue';
+      const preDeadlineAt = new Date(candidate.dueAt.getTime() - 10 * 60 * 1_000);
+      const isUpcoming = candidate.dueAt > now && candidate.createdAt <= preDeadlineAt;
+      const isOverdue = candidate.dueAt <= now && dueLocalDate !== nowLocalDate;
+      if (!isUpcoming && !isOverdue) {
+        skipped += 1;
+        continue;
+      }
+      const kind = isUpcoming ? 'upcoming' : 'overdue';
       if (kind === 'overdue') {
         try {
           await updateCommitment({
@@ -121,10 +129,10 @@ export function createReminderJob<TQueryResult extends PgQueryResultHKT>(input: 
         chatId: candidate.chatId,
         commitmentId: candidate.commitmentId,
         dueDateText: candidate.dueDateText,
-        idempotencyKey: `reminder:${kind}:${candidate.commitmentId}:${kind === 'due' ? candidate.dueAt.toISOString() : nowLocalDate}`,
+        idempotencyKey: `reminder:${kind}:${candidate.commitmentId}:${kind === 'upcoming' ? candidate.dueAt.toISOString() : nowLocalDate}`,
         kind,
         language: candidate.language,
-        status: kind === 'due' ? 'open' : 'overdue',
+        status: kind === 'upcoming' ? 'open' : 'overdue',
         title: candidate.title,
         workspaceId: candidate.workspaceId,
       });

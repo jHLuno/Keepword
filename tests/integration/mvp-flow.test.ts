@@ -194,7 +194,12 @@ test('supports the complete approved MVP without leaking private task state', as
       database: database.db,
       messenger: fakeTelegram,
     });
-    await expect(runReminderJob(dueAt)).resolves.toMatchObject({ delivered: 1 });
+    await database.db
+      .update(commitments)
+      .set({ createdAt: new Date('2026-07-17T12:00:00.000Z') })
+      .where(eq(commitments.id, commitment.id));
+    await expect(runReminderJob(new Date('2026-07-18T11:50:00.000Z'))).resolves.toMatchObject({ delivered: 1 });
+    await expect(runReminderJob(dueAt)).resolves.toMatchObject({ delivered: 0 });
     await expect(runReminderJob(new Date('2026-07-19T12:00:00.000Z'))).resolves.toMatchObject({ delivered: 1 });
     expect(fakeTelegram.privateMessagesFor(adminTelegramUserId).some((text) => text.includes('Срок обязательства истёк'))).toBe(true);
 

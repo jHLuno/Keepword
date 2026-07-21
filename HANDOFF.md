@@ -1,5 +1,26 @@
 [Earlier entries](docs/archive/HANDOFF-pre-S04.md) · [2026-07-19 archive](docs/archive/HANDOFF-2026-07-19-pre-filter.md) · [Trust Memory archive](docs/archive/HANDOFF-2026-07-19-pre-trust-memory.md) · [Pre-calibration archive](docs/archive/HANDOFF-2026-07-19-pre-calibration.md) · [Trust Memory implementation archive](docs/archive/HANDOFF-2026-07-19-trust-memory-implementation.md)
 
+## 2026-07-21 — Преддедлайновые напоминания handoff
+
+### Done
+- Reminder worker отправляет подключённому исполнителю одно личное
+  уведомление за 10 минут до точного `dueAt`.
+- Напоминание больше не дублируется в сам момент дедлайна; с нового локального
+  дня сохраняется существующая обработка просрочки.
+- Добавлены интеграционные тесты на преддедлайновую доставку, отсутствие дубля
+  и устойчивость отправки к ошибкам Telegram и persistence.
+
+### Not done
+- Live Railway/Telegram smoke test не выполнялся из локальной рабочей среды.
+
+### Risks / blockers
+- Новая логика начнёт работать только после deploy worker. Уже созданные задачи
+  используют сохранённый `dueAt`; их срок не пересчитывается.
+
+### Next recommended step
+- Развернуть worker и web, затем подтвердить тестовую задачу с дедлайном через
+  15 минут и проверить ровно одну личную доставку за 10 минут до срока.
+
 ## 2026-07-21 — Contextual actions UX handoff
 
 ### Done
