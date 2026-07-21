@@ -1,6 +1,8 @@
 import { timingSafeEqual } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+import { extname, resolve, sep } from 'node:path';
 
-import Fastify, { type FastifyInstance } from 'fastify';
+import Fastify, { type FastifyInstance, type FastifyReply } from 'fastify';
 import OpenAI from 'openai';
 import { z } from 'zod';
 
@@ -32,6 +34,7 @@ export type AppDependencies<TQueryResult extends PgQueryResultHKT> = Readonly<{
   analyzeGroupMessage?: AnalyzeGroupMessage;
   database: RepositoryDatabase<TQueryResult>;
   logger?: Logger;
+  landingDirectory?: string;
   runJobs?: () => Promise<void>;
   telegramAdapterFactory?: TelegramAdapterFactory;
 }>;
@@ -45,6 +48,18 @@ function hasValidSecret(receivedSecret: string | string[] | undefined, expectedS
   const expected = Buffer.from(expectedSecret);
 
   return received.length === expected.length && timingSafeEqual(received, expected);
+}
+
+function contentType(path: string): string {
+  const types: Record<string, string> = {
+    '.css': 'text/css; charset=utf-8',
+    '.html': 'text/html; charset=utf-8',
+    '.js': 'application/javascript; charset=utf-8',
+    '.json': 'application/json; charset=utf-8',
+    '.svg': 'image/svg+xml',
+    '.woff2': 'font/woff2',
+  };
+  return types[extname(path)] ?? 'application/octet-stream';
 }
 
 export function buildApp<TQueryResult extends PgQueryResultHKT>(
@@ -99,6 +114,25 @@ export function buildApp<TQueryResult extends PgQueryResultHKT>(
   const updates = createUpdatesRepository(dependencies.database);
 
   const app = Fastify({ logger: false });
+  const landingDirectory = resolve(dependencies.landingDirectory ?? process.env.LANDING_DIRECTORY ?? 'public/landing');
+
+  async function sendLandingFile(pathname: string, reply: FastifyReply): Promise<void> {
+    const relativePath = pathname === '/' ? 'index.html' : pathname.replace(/^\/+/, '');
+    const filePath = resolve(landingDirectory, relativePath);
+    if (filePath !== landingDirectory && !filePath.startsWith(`${landingDirectory}${sep}`)) {
+      await reply.code(404).send();
+      return;
+    }
+    try {
+      await reply.type(contentType(filePath)).send(await readFile(filePath));
+    } catch {
+      if (!extname(relativePath)) {
+        await reply.type('text/html; charset=utf-8').send(await readFile(resolve(landingDirectory, 'index.html')));
+        return;
+      }
+      await reply.code(404).send();
+    }
+  }
 
   app.get('/health', () => ({ status: 'ok' }));
 
@@ -186,6 +220,12 @@ export function buildApp<TQueryResult extends PgQueryResultHKT>(
       });
 
     return reply.code(200).send({ status: 'accepted' });
+  });
+
+  app.get('/', async (_request, reply) => sendLandingFile('/', reply));
+  app.get('/*', async (request, reply) => {
+    const pathname = new URL(request.raw.url ?? '/', 'http://localhost').pathname;
+    return sendLandingFile(pathname, reply);
   });
 
   return app;
