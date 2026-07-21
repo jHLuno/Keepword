@@ -1,5 +1,27 @@
 [Earlier entries](docs/archive/HANDOFF-pre-S04.md) · [2026-07-19 archive](docs/archive/HANDOFF-2026-07-19-pre-filter.md) · [Trust Memory archive](docs/archive/HANDOFF-2026-07-19-pre-trust-memory.md) · [Pre-calibration archive](docs/archive/HANDOFF-2026-07-19-pre-calibration.md) · [Trust Memory implementation archive](docs/archive/HANDOFF-2026-07-19-trust-memory-implementation.md)
 
+## 2026-07-21 — Group edit UX handoff
+
+### Done
+- Group suggestion editing is source-chat native. An authorised author or
+  current source-chat admin must reply to the issued instruction; the server
+  scopes the session to the exact actor, workspace, chat, suggestion and
+  instruction message.
+- The original card is disabled after an authorised action; edits publish a
+  new confirmation card rather than silently creating a commitment.
+- Added forward-only migration `0013_group_suggestion_edit_sessions`.
+
+### Not done
+- Task 3 (`/check` picker/detail UX) and Task 4 (settings-scope UX) remain.
+
+### Risks / blockers
+- This migration must be applied before the group-edit deployment. No automated
+  checks were run in this pass at the operator's request.
+
+### Next recommended step
+- Continue with the `/check` picker/detail flow, then deploy web so Railway
+  applies migration `0013` via the configured pre-deploy migration command.
+
 ## 2026-07-19 — Internationalization & delivery hardening handoff
 
 ### Done

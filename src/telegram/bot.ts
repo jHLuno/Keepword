@@ -91,6 +91,13 @@ function createGrammYCallbackMessenger(context: Context): CallbackMessenger {
       });
     },
 
+    async sendGroupEditInstruction(input) {
+      const message = await context.api.sendMessage(Number(input.telegramChatId), input.text, {
+        reply_parameters: { message_id: Number(input.replyToTelegramMessageId) },
+      });
+      return String(message.message_id);
+    },
+
     async editPrivateCheckMessage(input) {
       await context.api.editMessageText(Number(input.telegramChatId), Number(input.telegramMessageId), input.text, {
         ...(input.replyMarkup ? { reply_markup: input.replyMarkup } : {}),

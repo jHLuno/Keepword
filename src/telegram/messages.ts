@@ -66,7 +66,9 @@ type Strings = Readonly<{
   toastCommitmentRejected: string;
   promptReschedule: string;
   promptEdit: string;
+  promptGroupEdit: string;
   editInstructions: string;
+  groupEditInstructions: string;
   suggestionHeading: string;
   privateSuggestionHeading: string;
   dueLabel: string;
@@ -187,12 +189,22 @@ const catalog: Record<Locale, Strings> = {
     toastCommitmentRejected: 'The commitment will not be saved.',
     promptReschedule: 'In your private chat with Keepword, send the new deadline — e.g. "today 22:00", "tomorrow 18:00", or "2026-07-20 22:00".',
     promptEdit: 'In your private chat with Keepword, send e.g. "due: tomorrow 18:00" or "title: New title" — one field per line.',
+    promptGroupEdit: 'Reply to the instruction in this group.',
     editInstructions: [
       'To edit, send the changed fields in this chat, one per line:',
       '',
       'title: New title',
       'due: tomorrow 18:00   (or "friday", "2026-07-20 22:00")',
       'description: extra details   (send "-" to clear)',
+      '',
+      'You can send just one line.',
+    ].join('\n'),
+    groupEditInstructions: [
+      'Reply to this message with the fields to change:',
+      '',
+      'title: New title',
+      'due: tomorrow 18:00',
+      'description: extra details',
       '',
       'You can send just one line.',
     ].join('\n'),
@@ -328,12 +340,22 @@ const catalog: Record<Locale, Strings> = {
     toastCommitmentRejected: 'Договорённость не будет сохранена.',
     promptReschedule: 'В личном чате с Keepword отправьте новый срок — например «сегодня 22:00», «завтра 18:00» или «2026-07-20 22:00».',
     promptEdit: 'В личном чате с Keepword отправьте, например «due: завтра 18:00» или «title: Новый заголовок» — по одному полю в строке.',
+    promptGroupEdit: 'Ответьте на инструкцию в этой группе.',
     editInstructions: [
       'Чтобы изменить, отправьте нужные поля в этом чате, по одному в строке:',
       '',
       'title: Новый заголовок',
       'due: завтра 18:00   (или «в пятницу», «2026-07-20 22:00»)',
       'description: детали   (отправьте «-», чтобы очистить)',
+      '',
+      'Можно отправить только одну строку.',
+    ].join('\n'),
+    groupEditInstructions: [
+      'Ответьте на это сообщение полями, которые нужно изменить:',
+      '',
+      'название: Новый заголовок',
+      'срок: завтра 18:00',
+      'описание: детали',
       '',
       'Можно отправить только одну строку.',
     ].join('\n'),
@@ -469,6 +491,7 @@ const catalog: Record<Locale, Strings> = {
     toastCommitmentRejected: 'El compromiso no se guardará.',
     promptReschedule: 'En tu chat privado con Keepword envía la nueva fecha — p. ej. «hoy 22:00», «mañana 18:00» o «2026-07-20 22:00».',
     promptEdit: 'En tu chat privado con Keepword envía p. ej. «due: mañana 18:00» o «title: Nuevo título» — un campo por línea.',
+    promptGroupEdit: 'Responde a la instrucción en este grupo.',
     editInstructions: [
       'Para editar, envía los campos cambiados en este chat, uno por línea:',
       '',
@@ -477,6 +500,15 @@ const catalog: Record<Locale, Strings> = {
       'description: detalles   (envía «-» para borrar)',
       '',
       'Puedes enviar una sola línea.',
+    ].join('\n'),
+    groupEditInstructions: [
+      'Responde a este mensaje con los campos que quieres cambiar:',
+      '',
+      'title: Nuevo título',
+      'due: mañana 18:00',
+      'description: detalles',
+      '',
+      'Puedes enviar solo una línea.',
     ].join('\n'),
     suggestionHeading: '📌 Keepword detectó un compromiso',
     privateSuggestionHeading: '📌 Encontré un compromiso',

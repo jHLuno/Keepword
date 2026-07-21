@@ -72,11 +72,14 @@ export function buildApp<TQueryResult extends PgQueryResultHKT>(
   const groupUpdateHandler = createGroupUpdateHandler({
     analyzeGroupMessage,
     botUsername: config.telegramBotUsername,
+    callbackSigningSecret: config.callbackSigningSecret,
     chatSettings: (isCurrentChatAdmin) => createChatSettingsService(dependencies.database, isCurrentChatAdmin),
     connectChat,
+    database: dependencies.database,
     deleteChatData: (isCurrentChatAdmin) => createDeleteChatData(dependencies.database, isCurrentChatAdmin),
     onboardingInvitations,
     onboarding,
+    logger,
   });
   const callbackUpdateHandler = createCommitmentActionCallbackHandler({
     callbackSigningSecret: config.callbackSigningSecret,

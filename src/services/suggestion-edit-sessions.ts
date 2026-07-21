@@ -30,8 +30,26 @@ export type SuggestionEditSessionService = Readonly<{
     actorUserId: string;
     patch: SuggestionEditPatch;
     suggestionId: string;
-  }>) => Promise<void>;
+  }>) => Promise<Readonly<{
+    dueDateText: string | null;
+    id: string;
+    language: string;
+    title: string;
+  }>>;
   begin: (input: Readonly<{ actorUserId: string; suggestionId: string }>) => Promise<void>;
+  beginGroup: (input: Readonly<{
+    actorUserId: string;
+    instructionTelegramMessageId: string;
+    suggestionId: string;
+  }>) => Promise<void>;
+  findActiveForGroupReply: (input: Readonly<{
+    instructionTelegramMessageId: string;
+    telegramChatId: string;
+    telegramUserId: number;
+  }>) => Promise<Readonly<{
+    actorUserId: string;
+    suggestionId: string;
+  }> | null>;
   findActiveForTelegramUser: (telegramUserId: number) => Promise<Readonly<{
     actorUserId: string;
     suggestionId: string;
@@ -63,11 +81,11 @@ export function parseSuggestionEditInput(text: string): SuggestionEditPatch {
     }
     const field = line.slice(0, separatorIndex).trim().toLowerCase();
     const value = line.slice(separatorIndex + 1).trim();
-    if (field === 'title' && patch.title === undefined) {
+    if ((field === 'title' || field === 'название') && patch.title === undefined) {
       patch.title = value;
-    } else if (field === 'description' && patch.description === undefined) {
+    } else if ((field === 'description' || field === 'описание') && patch.description === undefined) {
       patch.description = value === '-' ? null : value;
-    } else if (field === 'due' && patch.dueDateText === undefined) {
+    } else if ((field === 'due' || field === 'срок') && patch.dueDateText === undefined) {
       patch.dueDateText = value === '-' ? null : value;
     } else {
       throw new SuggestionEditSessionError('INVALID_EDIT_INPUT');
@@ -83,7 +101,7 @@ export function createSuggestionEditSessionService<TQueryResult extends PgQueryR
   return {
     async apply(input) {
       validatePatch(input.patch);
-      await database.transaction(async (transaction) => {
+      return database.transaction(async (transaction) => {
         const claimedSession = await transaction
           .update(suggestionEditSessions)
           .set({ usedAt: new Date() })
@@ -145,6 +163,12 @@ export function createSuggestionEditSessionService<TQueryResult extends PgQueryR
           suggestionId: updatedSuggestion.id,
           workspaceId: updatedSuggestion.workspaceId,
         });
+        return {
+          dueDateText: updatedSuggestion.dueDateText,
+          id: updatedSuggestion.id,
+          language: updatedSuggestion.language,
+          title: updatedSuggestion.title,
+        };
       });
     },
 
@@ -157,6 +181,7 @@ export function createSuggestionEditSessionService<TQueryResult extends PgQueryR
             and(
               eq(suggestionEditSessions.actorUserId, input.actorUserId),
               isNull(suggestionEditSessions.usedAt),
+              isNull(suggestionEditSessions.instructionTelegramMessageId),
             ),
           );
         const actorRows = await transaction
@@ -185,6 +210,43 @@ export function createSuggestionEditSessionService<TQueryResult extends PgQueryR
       });
     },
 
+    async beginGroup(input) {
+      const instructionTelegramMessageId = Number(input.instructionTelegramMessageId);
+      if (!Number.isSafeInteger(instructionTelegramMessageId) || instructionTelegramMessageId < 0) {
+        throw new SuggestionEditSessionError('EDIT_SESSION_UNAVAILABLE');
+      }
+      await database.transaction(async (transaction) => {
+        const suggestionRows = await transaction
+          .select({ chatId: commitmentSuggestions.chatId, workspaceId: commitmentSuggestions.workspaceId })
+          .from(commitmentSuggestions)
+          .where(and(eq(commitmentSuggestions.id, input.suggestionId), eq(commitmentSuggestions.status, 'pending')))
+          .limit(1);
+        const suggestion = suggestionRows[0];
+        if (!suggestion) {
+          throw new SuggestionEditSessionError('EDIT_SESSION_UNAVAILABLE');
+        }
+        await transaction
+          .update(suggestionEditSessions)
+          .set({ usedAt: new Date() })
+          .where(
+            and(
+              eq(suggestionEditSessions.actorUserId, input.actorUserId),
+              eq(suggestionEditSessions.workspaceId, suggestion.workspaceId),
+              eq(suggestionEditSessions.chatId, suggestion.chatId),
+              isNull(suggestionEditSessions.usedAt),
+            ),
+          );
+        await transaction.insert(suggestionEditSessions).values({
+          actorUserId: input.actorUserId,
+          chatId: suggestion.chatId,
+          expiresAt: new Date(Date.now() + editSessionLifetimeMs),
+          instructionTelegramMessageId,
+          suggestionId: input.suggestionId,
+          workspaceId: suggestion.workspaceId,
+        });
+      });
+    },
+
     async findActiveForTelegramUser(telegramUserId) {
       const rows = await database
         .select({
@@ -206,6 +268,7 @@ export function createSuggestionEditSessionService<TQueryResult extends PgQueryR
           and(
             eq(users.telegramUserId, telegramUserId),
             isNull(suggestionEditSessions.usedAt),
+            isNull(suggestionEditSessions.instructionTelegramMessageId),
             gt(suggestionEditSessions.expiresAt, new Date()),
             eq(commitmentSuggestions.status, 'pending'),
           ),
@@ -219,6 +282,48 @@ export function createSuggestionEditSessionService<TQueryResult extends PgQueryR
             telegramChatId: String(session.telegramChatId),
           }
         : null;
+    },
+
+    async findActiveForGroupReply(input) {
+      const telegramChatId = Number(input.telegramChatId);
+      const instructionTelegramMessageId = Number(input.instructionTelegramMessageId);
+      if (!Number.isSafeInteger(telegramChatId) || !Number.isSafeInteger(instructionTelegramMessageId)) {
+        return null;
+      }
+      const rows = await database
+        .select({
+          actorUserId: suggestionEditSessions.actorUserId,
+          suggestionId: suggestionEditSessions.suggestionId,
+        })
+        .from(suggestionEditSessions)
+        .innerJoin(users, eq(suggestionEditSessions.actorUserId, users.id))
+        .innerJoin(
+          chats,
+          and(
+            eq(suggestionEditSessions.chatId, chats.id),
+            eq(suggestionEditSessions.workspaceId, chats.workspaceId),
+          ),
+        )
+        .innerJoin(
+          commitmentSuggestions,
+          and(
+            eq(suggestionEditSessions.suggestionId, commitmentSuggestions.id),
+            eq(suggestionEditSessions.chatId, commitmentSuggestions.chatId),
+            eq(suggestionEditSessions.workspaceId, commitmentSuggestions.workspaceId),
+          ),
+        )
+        .where(
+          and(
+            eq(users.telegramUserId, input.telegramUserId),
+            eq(chats.telegramChatId, telegramChatId),
+            eq(suggestionEditSessions.instructionTelegramMessageId, instructionTelegramMessageId),
+            isNull(suggestionEditSessions.usedAt),
+            gt(suggestionEditSessions.expiresAt, new Date()),
+            eq(commitmentSuggestions.status, 'pending'),
+          ),
+        )
+        .limit(1);
+      return rows[0] ?? null;
     },
   };
 }

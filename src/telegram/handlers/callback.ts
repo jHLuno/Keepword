@@ -55,6 +55,11 @@ export type CallbackMessenger = Readonly<{
     telegramMessageId: string;
     text?: string;
   }>) => Promise<void>;
+  sendGroupEditInstruction?: (input: Readonly<{
+    replyToTelegramMessageId: string;
+    telegramChatId: string;
+    text: string;
+  }>) => Promise<string>;
   isCurrentChatAdmin?: CurrentChatAdminChecker;
   editPrivateCheckMessage?: (input: Readonly<{
     replyMarkup?: InlineKeyboardMarkup;
@@ -220,6 +225,9 @@ export function createCommitmentActionCallbackHandler<TQueryResult extends PgQue
           commitmentId: resolvedCallback.commitmentId,
           telegramChatId: actionTelegramChatId,
         });
+        if (callback.message.message_id !== undefined && messenger.editCallbackMessage) {
+          await messenger.editCallbackMessage({ telegramChatId, telegramMessageId: String(callback.message.message_id) });
+        }
         await messenger.answerCallbackQuery({ callbackQueryId: callback.id, text: strings.toastStatusUpdated });
         input.logger?.info('commitment_updated', {
           telegramChatId,
@@ -259,10 +267,46 @@ export function createCommitmentActionCallbackHandler<TQueryResult extends PgQue
           throw new Error('Authorized edit actor could not be scoped');
         }
         await callbackTokens.claim(signedCallback);
-        await createSuggestionEditSessionService(input.database).begin({
-          actorUserId: actor.userId,
-          suggestionId: resolvedCallback.suggestionId,
-        });
+        const editSessions = createSuggestionEditSessionService(input.database);
+        if (callback.message.chat.type !== 'private') {
+          if (callback.message.message_id === undefined || !messenger.sendGroupEditInstruction) {
+            throw new CallbackDataError();
+          }
+          if (messenger.editCallbackMessage) {
+            await messenger.editCallbackMessage({
+              telegramChatId,
+              telegramMessageId: String(callback.message.message_id),
+            });
+          }
+          const instructionTelegramMessageId = await messenger.sendGroupEditInstruction({
+            replyToTelegramMessageId: String(callback.message.message_id),
+            telegramChatId,
+            text: strings.groupEditInstructions,
+          });
+          await editSessions.beginGroup({
+            actorUserId: actor.userId,
+            instructionTelegramMessageId,
+            suggestionId: resolvedCallback.suggestionId,
+          });
+          await messenger.answerCallbackQuery({
+            callbackQueryId: callback.id,
+            text: strings.promptGroupEdit,
+          });
+          input.logger?.info('suggestion_group_edit_started', {
+            suggestionId: resolvedCallback.suggestionId,
+            telegramChatId,
+            telegramUserId: String(telegramUserId),
+            result: 'success',
+          });
+          return;
+        }
+        await editSessions.begin({ actorUserId: actor.userId, suggestionId: resolvedCallback.suggestionId });
+        if (callback.message.message_id !== undefined && messenger.editCallbackMessage) {
+          await messenger.editCallbackMessage({
+            telegramChatId,
+            telegramMessageId: String(callback.message.message_id),
+          });
+        }
         await messenger.answerCallbackQuery({
           callbackQueryId: callback.id,
           text: strings.promptEdit,
@@ -310,6 +354,9 @@ export function createCommitmentActionCallbackHandler<TQueryResult extends PgQue
           confirmedByUserId: scopedActor.userId,
           suggestionId: resolvedCallback.suggestionId,
         });
+        if (callback.message.message_id !== undefined && messenger.editCallbackMessage) {
+          await messenger.editCallbackMessage({ telegramChatId, telegramMessageId: String(callback.message.message_id) });
+        }
         await messenger.answerCallbackQuery({ callbackQueryId: callback.id, text: strings.toastCommitmentSaved });
         await messenger.sendActionFeedback?.({ telegramChatId, text: strings.feedbackCommitmentSaved });
         input.logger?.info('commitment_confirmed', {
@@ -324,6 +371,9 @@ export function createCommitmentActionCallbackHandler<TQueryResult extends PgQue
         rejectedByUserId: scopedActor.userId,
         suggestionId: resolvedCallback.suggestionId,
       });
+      if (callback.message.message_id !== undefined && messenger.editCallbackMessage) {
+        await messenger.editCallbackMessage({ telegramChatId, telegramMessageId: String(callback.message.message_id) });
+      }
       await messenger.answerCallbackQuery({ callbackQueryId: callback.id, text: strings.toastCommitmentRejected });
       await messenger.sendActionFeedback?.({ telegramChatId, text: strings.toastCommitmentRejected });
       input.logger?.info('commitment_rejected', {

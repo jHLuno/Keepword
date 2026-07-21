@@ -377,12 +377,22 @@ export const suggestionEditSessions = pgTable(
     id: uuid('id').primaryKey().defaultRandom(),
     suggestionId: uuid('suggestion_id').notNull(),
     actorUserId: uuid('actor_user_id').notNull(),
+    workspaceId: uuid('workspace_id'),
+    chatId: uuid('chat_id'),
+    instructionTelegramMessageId: bigint('instruction_telegram_message_id', { mode: 'number' }),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     usedAt: timestamp('used_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     index('suggestion_edit_sessions_actor_expiry_idx').on(table.actorUserId, table.expiresAt),
+    index('suggestion_edit_sessions_group_reply_idx').on(
+      table.actorUserId,
+      table.workspaceId,
+      table.chatId,
+      table.instructionTelegramMessageId,
+      table.expiresAt,
+    ),
     foreignKey({
       name: 'suggestion_edit_sessions_suggestion_fkey',
       columns: [table.suggestionId],
@@ -392,6 +402,11 @@ export const suggestionEditSessions = pgTable(
       name: 'suggestion_edit_sessions_actor_fkey',
       columns: [table.actorUserId],
       foreignColumns: [users.id],
+    }).onDelete('cascade'),
+    foreignKey({
+      name: 'suggestion_edit_sessions_chat_workspace_fkey',
+      columns: [table.chatId, table.workspaceId],
+      foreignColumns: [chats.id, chats.workspaceId],
     }).onDelete('cascade'),
   ],
 );

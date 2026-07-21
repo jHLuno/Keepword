@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { PgQueryResultHKT } from 'drizzle-orm/pg-core';
 
 import type {
   AnalyzeGroupMessage,
@@ -8,17 +9,25 @@ import type {
 import type { ConnectChat } from '../../services/connect-chat.js';
 import type { OnboardingInvitationService } from '../../services/onboarding-invitation.js';
 import type { OnboardingService } from '../../services/onboarding.js';
-import type { CurrentChatAdminChecker } from '../../services/authorize-action.js';
+import {
+  createAuthorizeSuggestionAction,
+  type CurrentChatAdminChecker,
+  SuggestionActionAuthorizationError,
+} from '../../services/authorize-action.js';
+import { createCallbackTokenService } from '../../services/callback-tokens.js';
+import {
+  createSuggestionEditSessionService,
+  parseSuggestionEditInput,
+  SuggestionEditSessionError,
+} from '../../services/suggestion-edit-sessions.js';
 import { ChatSettingsError, type ChatSettingsService } from '../../services/chat-settings.js';
 import { ChatDataDeletionError, type DeleteChatData } from '../../services/delete-chat-data.js';
 import type { TelegramUpdate } from '../bot.js';
-import {
-  renderNotificationStatus,
-  renderOnboardingCard,
-  t,
-} from '../messages.js';
+import { renderNotificationStatus, renderOnboardingCard, renderSuggestion, t } from '../messages.js';
 import { normalizeLocale } from '../../i18n/index.js';
 import { parseTelegramCommand } from './commands.js';
+import type { RepositoryDatabase } from '../../repositories/database.js';
+import type { Logger } from '../../observability/logger.js';
 
 const groupMemberUpdateSchema = z
   .object({
@@ -100,12 +109,15 @@ function isBotAdded(previousStatus: string, nextStatus: string): boolean {
   return ['left', 'kicked'].includes(previousStatus) && ['member', 'administrator'].includes(nextStatus);
 }
 
-export function createGroupUpdateHandler(input: Readonly<{
+export function createGroupUpdateHandler<TQueryResult extends PgQueryResultHKT>(input: Readonly<{
   analyzeGroupMessage?: AnalyzeGroupMessage;
   botUsername: string;
+  callbackSigningSecret?: string;
   chatSettings?: ChatSettingsFactory;
   connectChat: ConnectChat;
+  database?: RepositoryDatabase<TQueryResult>;
   deleteChatData?: DeleteChatDataFactory;
+  logger?: Logger;
   onboardingInvitations: OnboardingInvitationService;
   onboarding?: OnboardingService;
 }>): GroupUpdateHandler {
@@ -204,6 +216,66 @@ export function createGroupUpdateHandler(input: Readonly<{
           text: strings.groupPrivacyInfo,
         });
         return;
+      }
+      if (message.reply_to_message && input.database && input.callbackSigningSecret) {
+        const editSessions = createSuggestionEditSessionService(input.database);
+        const session = await editSessions.findActiveForGroupReply({
+          instructionTelegramMessageId: String(message.reply_to_message.message_id),
+          telegramChatId: String(message.chat.id),
+          telegramUserId: message.from.id,
+        });
+        if (session) {
+          try {
+            const patch = parseSuggestionEditInput(message.text);
+            await createAuthorizeSuggestionAction(
+              input.database,
+              messenger.isCurrentChatAdmin ?? (() => Promise.resolve(false)),
+            )({
+              actor: { firstName: message.from.first_name, telegramUserId: message.from.id },
+              suggestionId: session.suggestionId,
+              telegramChatId: String(message.chat.id),
+            });
+            const updated = await editSessions.apply({
+              actorUserId: session.actorUserId,
+              patch,
+              suggestionId: session.suggestionId,
+            });
+            const callbacks = await createCallbackTokenService(input.database).issueSuggestionCallbacks({
+              actions: ['confirm', 'edit', 'reject'],
+              suggestionId: updated.id,
+            });
+            if (!callbacks.confirm || !callbacks.edit || !callbacks.reject) {
+              throw new Error('Suggestion callback nonce creation was incomplete');
+            }
+            const card = renderSuggestion(
+              normalizeLocale(updated.language),
+              updated,
+              { confirm: callbacks.confirm, edit: callbacks.edit, reject: callbacks.reject },
+              input.callbackSigningSecret,
+            );
+            await messenger.sendSuggestionReply({
+              ...card,
+              replyToTelegramMessageId: String(message.reply_to_message.message_id),
+              telegramChatId: String(message.chat.id),
+            });
+            input.logger?.info('suggestion_group_edit_applied', {
+              suggestionId: updated.id,
+              telegramChatId: String(message.chat.id),
+              telegramUserId: String(message.from.id),
+              result: 'success',
+            });
+          } catch (error: unknown) {
+            if (error instanceof SuggestionEditSessionError || error instanceof SuggestionActionAuthorizationError) {
+              await messenger.sendGroupMessage?.({
+                telegramChatId: String(message.chat.id),
+                text: strings.editFailed,
+              });
+              return;
+            }
+            throw error;
+          }
+          return;
+        }
       }
       if (command?.name === 'keep') {
         const source = message.reply_to_message;
