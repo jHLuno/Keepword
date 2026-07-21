@@ -13,6 +13,7 @@ export type ConnectChatInput = Readonly<{
 
 export type ConnectedChat = Readonly<{
   chatId: string;
+  language: string;
   telegramChatId: string;
   title: string;
   workspaceId: string;
@@ -52,6 +53,7 @@ export function createConnectChat<TQueryResult extends PgQueryResultHKT>(
           .where(eq(chats.id, existingChat.id));
         return {
           chatId: existingChat.id,
+          language: existingChat.language,
           telegramChatId: input.telegramChatId,
           title: existingChat.title,
           workspaceId: existingChat.workspaceId,
@@ -103,6 +105,7 @@ export function createConnectChat<TQueryResult extends PgQueryResultHKT>(
 
       return {
         chatId: chat.id,
+        language: chat.language,
         telegramChatId: input.telegramChatId,
         title: chat.title,
         workspaceId: workspace.id,

@@ -335,12 +335,14 @@ export function createGroupUpdateHandler<TQueryResult extends PgQueryResultHKT>(
           return;
         }
         if (command.name === 'invite') {
+          const chatLocale = chat.language === 'auto' ? locale : normalizeLocale(chat.language);
+          const chatStrings = t(chatLocale);
           const onboardingDeepLink = await input.onboarding.createOnboardingLink(chat.id);
           await messenger.sendOnboardingCard({
-            buttonText: strings.onboardingButton,
+            buttonText: chatStrings.onboardingButton,
             onboardingDeepLink,
             telegramChatId: chat.telegramChatId,
-            text: renderOnboardingCard(locale),
+            text: renderOnboardingCard(chatLocale),
           });
           return;
         }
@@ -407,7 +409,9 @@ export function createGroupUpdateHandler<TQueryResult extends PgQueryResultHKT>(
       return;
     }
 
-    const memberLocale = normalizeLocale(memberUpdate.from.language_code);
+    const memberLocale = connectedChat.language === 'auto'
+      ? normalizeLocale(memberUpdate.from.language_code)
+      : normalizeLocale(connectedChat.language);
     await messenger.sendOnboardingCard({
       buttonText: t(memberLocale).onboardingButton,
       onboardingDeepLink: `https://t.me/${input.botUsername}?start=join_${invitation.onboardingToken}`,

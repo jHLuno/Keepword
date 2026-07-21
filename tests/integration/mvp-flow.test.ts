@@ -123,6 +123,24 @@ test('supports the complete approved MVP without leaking private task state', as
       throw new Error('Expected the group connection to publish an onboarding token');
     }
 
+    await database.db.update(chats).set({ language: 'ru' }).where(eq(chats.telegramChatId, telegramChatId));
+    await app.inject({
+      headers: webhookHeaders(),
+      method: 'POST',
+      payload: {
+        message: {
+          chat: { id: telegramChatId, type: 'supergroup' },
+          date: 1_784_365_200,
+          from: { language_code: 'en', first_name: 'Daniyar', id: adminTelegramUserId, is_bot: false },
+          message_id: 10,
+          text: '/invite',
+        },
+        update_id: 141_010,
+      },
+      url: '/telegram/webhook',
+    });
+    expect(fakeTelegram.onboardingCards.at(-1)?.text).toContain('Keepword подключён');
+
     await app.inject({
       headers: webhookHeaders(),
       method: 'POST',
