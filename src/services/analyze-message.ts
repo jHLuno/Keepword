@@ -195,14 +195,13 @@ export function createAnalyzeGroupMessage<TQueryResult extends PgQueryResultHKT>
 
     let createdSuggestion;
     try {
+      const resolvedDueAt = resolveDueDate(candidate.due_date_text, input.sentAt, chat.timezone);
       createdSuggestion = await createPendingSuggestion({
         assigneeUserId: assignee.id,
         chatId: chat.id,
         confidence: candidate.confidence,
         description: candidate.description,
-        dueAt: candidate.due_at === null
-          ? resolveDueDate(candidate.due_date_text, input.sentAt, chat.timezone)
-          : new Date(candidate.due_at),
+        dueAt: resolvedDueAt ?? (candidate.due_at === null ? null : new Date(candidate.due_at)),
         dueDateText: candidate.due_date_text,
         language: locale,
         needsAssigneeClarification: candidate.needs_assignee_clarification,

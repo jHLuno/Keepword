@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
 import type { CommitmentCandidate } from '../../src/domain/extraction.js';
 import { createAnalyzeGroupMessage } from '../../src/services/analyze-message.js';
 import { createSuggestion } from '../../src/services/create-suggestion.js';
-import { chatMemberships, commitmentSuggestions, commitments } from '../../src/db/schema.js';
+import { chatMemberships, chats, commitmentSuggestions, commitments } from '../../src/db/schema.js';
 import { createMessagesRepository } from '../../src/repositories/messages.js';
 import { createConnectChat } from '../../src/services/connect-chat.js';
 import { createOnboardingInvitationService } from '../../src/services/onboarding-invitation.js';
@@ -347,5 +347,30 @@ describe('suggestions', () => {
     expect(suggestion?.dueDateText).toBe('завтра');
     // The chat is UTC and the message was sent 2026-07-18T09:00Z, so "tomorrow" resolves to 2026-07-19 09:00Z.
     expect(suggestion?.dueAt?.toISOString()).toBe('2026-07-19T09:00:00.000Z');
+  });
+
+  test('uses the chat timezone for a textual deadline even when the extractor supplies a mismatched ISO value', async () => {
+    const connected = await connectTestChat();
+    await database.db.update(chats).set({ timezone: 'Asia/Almaty' }).where(eq(chats.id, connected.chatId));
+    const analyzer = createAnalyzeGroupMessage(database.db, {
+      extractCandidate: (input) => Promise.resolve({
+        ...highConfidenceCandidate,
+        due_at: '2026-07-18T09:10:00.000Z',
+        due_date_text: 'сегодня в 13:10',
+        source_message_ids: [input.message.id],
+      }),
+    }, {
+      sendSuggestionReply: () => Promise.resolve(),
+      sendClarificationRequest: () => Promise.resolve(),
+    }, 'callback-test-secret');
+
+    await expect(analyzer({ ...createMessage(11), sentAt: new Date('2026-07-18T06:00:00.000Z') })).resolves.toBe('suggested');
+
+    const suggestion = (await database.db
+      .select({ dueAt: commitmentSuggestions.dueAt })
+      .from(commitmentSuggestions)
+      .where(eq(commitmentSuggestions.chatId, connected.chatId))
+      .limit(1))[0];
+    expect(suggestion?.dueAt?.toISOString()).toBe('2026-07-18T08:10:00.000Z');
   });
 });
