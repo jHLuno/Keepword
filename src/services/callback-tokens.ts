@@ -70,7 +70,12 @@ export function createCallbackTokenService<TQueryResult extends PgQueryResultHKT
 
   async function issue(
     actions: readonly CallbackAction[],
-    target: Readonly<{ checkPage?: number; commitmentId?: string; suggestionId?: string; telegramUserId?: number }>,
+    target: Readonly<{
+      checkPage?: number | undefined;
+      commitmentId?: string | undefined;
+      suggestionId?: string | undefined;
+      telegramUserId?: number | undefined;
+    }>,
   ): Promise<Readonly<Partial<Record<CallbackAction, string>>>> {
     const result: Partial<Record<CallbackAction, string>> = {};
     const expiresAt = new Date(Date.now() + callbackLifetimeMs);

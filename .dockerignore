@@ -1,0 +1,26 @@
+# VCS / tooling
+.git
+.gitignore
+.worktrees
+
+# Dependencies & build output (reinstalled / rebuilt inside the image)
+node_modules
+**/node_modules
+dist
+coverage
+
+# Standalone marketing site — not part of the bot deploy
+landing
+
+# Next.js / misc build artifacts
+**/.next
+*.log
+
+# Local env & OS cruft (secrets come from the platform at runtime)
+.env
+.env.*
+!.env.example
+.DS_Store
+
+# Docs
+docs
