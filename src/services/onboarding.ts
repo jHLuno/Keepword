@@ -36,9 +36,13 @@ export type OnboardingService = Readonly<{
   claimNotificationInvite: (input: Readonly<{ chatId: string; telegramUserId: string }>) => Promise<boolean>;
   createOnboardingLink: (chatId: string) => Promise<string>;
   findActiveChatByTelegramChatId: (telegramChatId: string) => Promise<Readonly<{
+    dailyDigestTime: string;
     id: string;
+    language: string;
+    mode: string;
     telegramChatId: string;
     title: string;
+    timezone: string;
     workspaceId: string;
   }> | null>;
   notificationStatus: (chatId: string) => Promise<NotificationStatus>;
@@ -264,7 +268,16 @@ export function createOnboardingService<TQueryResult extends PgQueryResultHKT>(
       }
       const chat = (
         await database
-        .select({ id: chats.id, telegramChatId: chats.telegramChatId, title: chats.title, workspaceId: chats.workspaceId })
+        .select({
+          dailyDigestTime: chats.dailyDigestTime,
+          id: chats.id,
+          language: chats.language,
+          mode: chats.mode,
+          telegramChatId: chats.telegramChatId,
+          title: chats.title,
+          timezone: chats.timezone,
+          workspaceId: chats.workspaceId,
+        })
           .from(chats)
           .where(and(eq(chats.telegramChatId, parsedTelegramChatId), eq(chats.isActive, true)))
           .limit(1)

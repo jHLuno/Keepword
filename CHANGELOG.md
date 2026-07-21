@@ -1,5 +1,20 @@
 [Earlier entries](docs/archive/CHANGELOG-pre-S04.md) · [2026-07-19 archive](docs/archive/CHANGELOG-2026-07-19-pre-filter.md) · [Trust Memory archive](docs/archive/CHANGELOG-2026-07-19-pre-trust-memory.md) · [Pre-calibration archive](docs/archive/CHANGELOG-2026-07-19-pre-calibration.md) · [Trust Memory implementation archive](docs/archive/CHANGELOG-2026-07-19-trust-memory-implementation.md)
 
+## 2026-07-21 — Explicit settings scope
+
+### Changed
+- Bare group `/settings` now renders that group's current mode, language,
+  timezone, and digest time, followed by the exact group-admin commands.
+- Private `/settings` and private help now state that they change only the
+  caller's notification delivery; team-wide settings must be changed by a
+  current administrator inside the relevant group.
+- The Railway checklist now covers migrations `0013` group edit sessions and
+  `0014` private `/check` picker tokens, plus their production smoke flows.
+
+### Verified
+- Tests were added for the settings scope and non-admin mutation denial. Per
+  operator request, no automated checks were run in this implementation pass.
+
 ## 2026-07-21 — Contextual private `/check`
 
 ### Added

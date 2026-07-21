@@ -135,9 +135,25 @@ export function createGroupUpdateHandler<TQueryResult extends PgQueryResultHKT>(
         });
         return;
       }
-      if (command?.name === 'settings' && input.chatSettings && input.onboarding) {
+      if (command?.name === 'settings' && input.onboarding) {
         const chat = await input.onboarding.findActiveChatByTelegramChatId(String(message.chat.id));
         if (!chat) {
+          return;
+        }
+        if (!command.argument?.trim()) {
+          await messenger.sendGroupMessage?.({
+            telegramChatId: chat.telegramChatId,
+            text: strings.settingsGroupOverview({
+              dailyDigestTime: chat.dailyDigestTime.slice(0, 5),
+              language: chat.language,
+              mode: chat.mode,
+              timezone: chat.timezone,
+            }),
+          });
+          return;
+        }
+        if (!input.chatSettings) {
+          await messenger.sendGroupMessage?.({ telegramChatId: chat.telegramChatId, text: strings.settingsModeUsage });
           return;
         }
         const args = (command.argument ?? '').trim().split(/\s+/).filter(Boolean);

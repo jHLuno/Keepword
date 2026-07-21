@@ -1,6 +1,6 @@
 [Earlier entries](docs/archive/HANDOFF-pre-S04.md) · [2026-07-19 archive](docs/archive/HANDOFF-2026-07-19-pre-filter.md) · [Trust Memory archive](docs/archive/HANDOFF-2026-07-19-pre-trust-memory.md) · [Pre-calibration archive](docs/archive/HANDOFF-2026-07-19-pre-calibration.md) · [Trust Memory implementation archive](docs/archive/HANDOFF-2026-07-19-trust-memory-implementation.md)
 
-## 2026-07-21 — Contextual `/check` handoff
+## 2026-07-21 — Contextual actions UX handoff
 
 ### Done
 - Private `/check` is now a per-user picker followed by one selected
@@ -9,19 +9,27 @@
   the selected commitment is re-read from the caller's active connected chats
   before its detail is shown.
 - Done/Blocked disables the selected detail card and produces a fresh picker.
-- Added forward-only migration `0014_check_commitment_picker_tokens` and
-  updated `PROJECT.md`.
+- Group suggestion edits are source-chat native; the old card is disabled and
+  only the authorized actor can reply to its scoped group instruction.
+- Private reminder rescheduling stays private and accepts localized future
+  deadlines in the source group's timezone.
+- Bare group `/settings` displays current group configuration and its
+  admin-only commands. Private `/settings` explicitly changes only personal
+  notification delivery.
+- Added forward-only migrations `0013_group_suggestion_edit_sessions` and
+  `0014_check_commitment_picker_tokens`; updated `PROJECT.md` and the Railway
+  release checklist.
 
 ### Not done
-- Task 4: explicit private-vs-group `/settings` UX.
+- No automated checks were run in this pass at the operator's request.
 
 ### Risks / blockers
-- Railway must apply migration `0014` before this web deployment. No automated
-  checks were run in this pass at the operator's request.
+- Railway must apply migrations `0013` and `0014` before this web deployment.
 
 ### Next recommended step
-- Implement the settings-scope UX, then push/deploy so Railway applies
-  migrations `0013` and `0014` with the configured pre-deploy command.
+- Push/deploy so Railway applies migrations `0013` and `0014` with the
+  configured pre-deploy command, then perform the scoped Telegram smoke tests
+  in `docs/release-checklist.md`.
 
 ## 2026-07-21 — Group edit UX handoff
 

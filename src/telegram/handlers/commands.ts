@@ -321,7 +321,7 @@ export function createPrivateCommandHandler<TQueryResult extends PgQueryResultHK
           const status = chatsForUser.length === 0
             ? strings.settingsNoGroups
             : chatsForUser.map((chat, index) => `${index + 1}. ${chat.title} — ${chat.notificationsEnabled ? strings.statusOn : strings.statusOff}`).join('\n');
-          return { handled: true, text: `${strings.settingsNotifTitle}\n${status}\n\n${strings.settingsNotifUsage}` };
+          return { handled: true, text: `${strings.settingsNotifTitle}\n${status}\n\n${strings.settingsNotifUsage}\n${strings.settingsNotifScope}` };
         }
         const selectedChat = selectChat(chatsForUser, settings[2] ?? null);
         if (!selectedChat) {

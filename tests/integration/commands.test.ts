@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 
 import { chatMemberships, chats, commitments, users } from '../../src/db/schema.js';
 import { createConnectChat } from '../../src/services/connect-chat.js';
+import { createChatSettingsService } from '../../src/services/chat-settings.js';
 import { createOnboardingInvitationService } from '../../src/services/onboarding-invitation.js';
 import { createOnboardingService } from '../../src/services/onboarding.js';
 import { createGroupUpdateHandler } from '../../src/telegram/handlers/group.js';
@@ -599,6 +600,57 @@ describe('Telegram commands', () => {
     });
 
     expect(captured).toEqual([{ telegramMessageId: '40', text: 'Я подготовлю бюджет к пятнице' }]);
+  });
+
+  test('renders current group settings without allowing a non-admin to change them', async () => {
+    const adminTelegramUserId = 9860;
+    const connected = await createConnectChat(database.db)({
+      adminTelegramUserId: String(adminTelegramUserId),
+      telegramChatId: '-1009860',
+      timezone: 'UTC',
+      title: 'Settings scope group',
+    });
+    await database.db.update(chats).set({
+      dailyDigestTime: '19:30:00',
+      language: 'ru',
+      mode: 'manual',
+      timezone: 'Asia/Almaty',
+    }).where(eq(chats.id, connected.chatId));
+    const handler = createGroupUpdateHandler({
+      botUsername: 'keepword_test_bot',
+      chatSettings: (isCurrentChatAdmin) => createChatSettingsService(database.db, isCurrentChatAdmin),
+      connectChat: createConnectChat(database.db),
+      onboarding: createOnboardingService(database.db, { botUsername: 'keepword_test_bot' }),
+      onboardingInvitations: createOnboardingInvitationService(database.db),
+    });
+    const fakeTelegram = createFakeTelegram({ currentAdminTelegramUserIds: [adminTelegramUserId] });
+    const adapter = fakeTelegram.telegramAdapterFactory(handler);
+
+    await adapter.handleUpdate(groupUpdate(connected.telegramChatId, 9861, '/settings'));
+
+    expect(fakeTelegram.groupMessages.at(-1)).toContain('Настройки группы');
+    expect(fakeTelegram.groupMessages.at(-1)).toContain('Режим: manual');
+    expect(fakeTelegram.groupMessages.at(-1)).toContain('Язык: ru');
+    expect(fakeTelegram.groupMessages.at(-1)).toContain('Часовой пояс: Asia/Almaty');
+    expect(fakeTelegram.groupMessages.at(-1)).toContain('Вечерняя сводка: 19:30');
+    expect(fakeTelegram.groupMessages.at(-1)).toContain('/settings digest 19:00');
+
+    await adapter.handleUpdate(groupUpdate(connected.telegramChatId, 9861, '/settings mode silent_digest'));
+
+    expect(fakeTelegram.groupMessages.at(-1)).toContain('Только текущий администратор');
+    expect((await database.db.select({ mode: chats.mode }).from(chats).where(eq(chats.id, connected.chatId)).limit(1))[0])
+      .toEqual({ mode: 'manual' });
+  });
+
+  test('makes private settings scope explicit', async () => {
+    const result = await createPrivateCommandHandler(database.db).handle({
+      command: { argument: null, name: 'settings' },
+      languageCode: 'ru',
+      telegramUserId: 9862,
+    });
+
+    expect(result.text).toContain('только вашу личную доставку уведомлений');
+    expect(result.text).toContain('командой /settings внутри нужной группы');
   });
 });
 

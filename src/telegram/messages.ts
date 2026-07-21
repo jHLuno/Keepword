@@ -125,6 +125,12 @@ type Strings = Readonly<{
   settingsModeSaved: (label: string) => string;
   settingsModeUnauthorized: string;
   settingsModeUsage: string;
+  settingsGroupOverview: (input: Readonly<{
+    dailyDigestTime: string;
+    language: string;
+    mode: string;
+    timezone: string;
+  }>) => string;
   commandInPrivate: string;
   privacyDeleted: string;
   privacyDeleteUnauthorized: string;
@@ -149,6 +155,7 @@ type Strings = Readonly<{
   statusOn: string;
   statusOff: string;
   settingsNotifUsage: string;
+  settingsNotifScope: string;
   settingsChoose: string;
   settingsUpdated: (title: string, enabled: boolean) => string;
   settingsLanguageSaved: (value: string) => string;
@@ -268,10 +275,24 @@ const catalog: Record<Locale, Strings> = {
     calibrationRejected: 'Rejected',
     reliabilityTeamHeading: '🤝 Reliability · last 30 days',
     reliabilityTeamLine: (r) => `— ${r.firstName}: ${r.onTime}/${r.eligible} on time · ${r.late} late · ${r.overdue} at risk`,
-    groupHelp: 'Group commands: reply /keep to a message, /invite, /notifications. Private commands: /tasks, /check, /settings, /privacy.',
+    groupHelp: 'Group commands: reply /keep to a message, /invite, /notifications, /settings. Private commands: /tasks, /check, /settings, /privacy.',
     settingsModeSaved: (label) => `Keepword mode: ${label}.`,
     settingsModeUnauthorized: 'Only a current chat administrator can change the Keepword mode.',
     settingsModeUsage: 'Use: /settings mode suggest|manual|silent_digest, /settings language auto|en|ru|es, /settings timezone <IANA>, /settings digest HH:MM',
+    settingsGroupOverview: (input) => [
+      '⚙️ Group settings',
+      '',
+      `Mode: ${input.mode}`,
+      `Language: ${input.language}`,
+      `Time zone: ${input.timezone}`,
+      `Daily digest: ${input.dailyDigestTime}`,
+      '',
+      'Only current group administrators can change these settings here:',
+      '/settings mode suggest|manual|silent_digest',
+      '/settings language auto|ru|en|es',
+      '/settings timezone Asia/Almaty',
+      '/settings digest 19:00',
+    ].join('\n'),
     commandInPrivate: 'This command works in a private chat with Keepword.',
     privacyDeleted: 'Keepword data for this chat has been deleted.',
     privacyDeleteUnauthorized: 'Only a current chat administrator can delete Keepword data.',
@@ -290,7 +311,8 @@ const catalog: Record<Locale, Strings> = {
       '',
       '/tasks — my tasks in a connected group',
       '/check — my commitments across all connected groups',
-      '/settings on|off [number] — personal notifications',
+      '/settings on|off [number] — personal notification delivery only',
+      'To change group settings, a current administrator sends /settings in that group.',
       '/privacy — how data is handled; deletion: /privacy delete in the group by a current administrator',
       '',
       'Forward a message with a promise — I will offer a card to confirm.',
@@ -305,6 +327,7 @@ const catalog: Record<Locale, Strings> = {
     statusOn: 'on',
     statusOff: 'off',
     settingsNotifUsage: 'Use: /settings on|off [number]',
+    settingsNotifScope: 'This changes only your personal notification delivery. To change group mode, language, time zone, or digest time, a current administrator must send /settings in that group.',
     settingsChoose: 'Choose a group: /settings on|off <number>',
     settingsUpdated: (title, enabled) => `Personal notifications for “${title}” ${enabled ? 'enabled' : 'disabled'}.`,
     settingsLanguageSaved: (value) => `Keepword language: ${value}.`,
@@ -422,10 +445,24 @@ const catalog: Record<Locale, Strings> = {
     calibrationRejected: 'Отклонено',
     reliabilityTeamHeading: '🤝 Надёжность · последние 30 дней',
     reliabilityTeamLine: (r) => `— ${r.firstName}: ${r.onTime}/${r.eligible} вовремя · ${r.late} с опозданием · ${r.overdue} риск`,
-    groupHelp: 'Команды группы: /keep ответом на сообщение, /invite, /notifications. Личные команды: /tasks, /check, /settings, /privacy.',
+    groupHelp: 'Команды группы: /keep ответом на сообщение, /invite, /notifications, /settings. Личные команды: /tasks, /check, /settings, /privacy.',
     settingsModeSaved: (label) => `Режим Keepword: ${label}.`,
     settingsModeUnauthorized: 'Только текущий администратор чата может менять режим Keepword.',
     settingsModeUsage: 'Используйте: /settings mode suggest|manual|silent_digest, /settings language auto|en|ru|es, /settings timezone <IANA>, /settings digest HH:MM',
+    settingsGroupOverview: (input) => [
+      '⚙️ Настройки группы',
+      '',
+      `Режим: ${input.mode}`,
+      `Язык: ${input.language}`,
+      `Часовой пояс: ${input.timezone}`,
+      `Вечерняя сводка: ${input.dailyDigestTime}`,
+      '',
+      'Изменять эти настройки здесь может только текущий администратор группы:',
+      '/settings mode suggest|manual|silent_digest',
+      '/settings language auto|ru|en|es',
+      '/settings timezone Asia/Almaty',
+      '/settings digest 19:00',
+    ].join('\n'),
     commandInPrivate: 'Эта команда работает в личном чате с Keepword.',
     privacyDeleted: 'Данные Keepword для этого чата удалены.',
     privacyDeleteUnauthorized: 'Только текущий администратор чата может удалить данные Keepword.',
@@ -444,7 +481,8 @@ const catalog: Record<Locale, Strings> = {
       '',
       '/tasks — мои задачи в подключённой группе',
       '/check — мои обязательства во всех подключённых группах',
-      '/settings on|off [номер] — личные уведомления',
+      '/settings on|off [номер] — только личная доставка уведомлений',
+      'Настройки группы меняет текущий администратор командой /settings внутри нужной группы.',
       '/privacy — как обрабатываются данные; удаление: /privacy delete в группе для текущего администратора',
       '',
       'Перешлите сообщение с обещанием — я предложу карточку для подтверждения.',
@@ -459,6 +497,7 @@ const catalog: Record<Locale, Strings> = {
     statusOn: 'вкл.',
     statusOff: 'выкл.',
     settingsNotifUsage: 'Используйте: /settings on|off [номер]',
+    settingsNotifScope: 'Эта команда меняет только вашу личную доставку уведомлений. Режим, язык, часовой пояс и время сводки группы меняет текущий администратор командой /settings внутри нужной группы.',
     settingsChoose: 'Выберите группу: /settings on|off <номер>',
     settingsUpdated: (title, enabled) => `Личные уведомления для «${title}» ${enabled ? 'включены' : 'выключены'}.`,
     settingsLanguageSaved: (value) => `Язык Keepword: ${value}.`,
@@ -576,10 +615,24 @@ const catalog: Record<Locale, Strings> = {
     calibrationRejected: 'Rechazados',
     reliabilityTeamHeading: '🤝 Fiabilidad · últimos 30 días',
     reliabilityTeamLine: (r) => `— ${r.firstName}: ${r.onTime}/${r.eligible} a tiempo · ${r.late} tarde · ${r.overdue} en riesgo`,
-    groupHelp: 'Comandos de grupo: responde /keep a un mensaje, /invite, /notifications. Comandos privados: /tasks, /check, /settings, /privacy.',
+    groupHelp: 'Comandos de grupo: responde /keep a un mensaje, /invite, /notifications, /settings. Comandos privados: /tasks, /check, /settings, /privacy.',
     settingsModeSaved: (label) => `Modo de Keepword: ${label}.`,
     settingsModeUnauthorized: 'Solo un administrador actual del chat puede cambiar el modo de Keepword.',
     settingsModeUsage: 'Usa: /settings mode suggest|manual|silent_digest, /settings language auto|en|ru|es, /settings timezone <IANA>, /settings digest HH:MM',
+    settingsGroupOverview: (input) => [
+      '⚙️ Ajustes del grupo',
+      '',
+      `Modo: ${input.mode}`,
+      `Idioma: ${input.language}`,
+      `Zona horaria: ${input.timezone}`,
+      `Resumen diario: ${input.dailyDigestTime}`,
+      '',
+      'Solo los administradores actuales del grupo pueden cambiar estos ajustes aquí:',
+      '/settings mode suggest|manual|silent_digest',
+      '/settings language auto|ru|en|es',
+      '/settings timezone Asia/Almaty',
+      '/settings digest 19:00',
+    ].join('\n'),
     commandInPrivate: 'Este comando funciona en un chat privado con Keepword.',
     privacyDeleted: 'Los datos de Keepword para este chat se han eliminado.',
     privacyDeleteUnauthorized: 'Solo un administrador actual del chat puede eliminar los datos de Keepword.',
@@ -598,7 +651,8 @@ const catalog: Record<Locale, Strings> = {
       '',
       '/tasks — mis tareas en un grupo conectado',
       '/check — mis compromisos en todos los grupos conectados',
-      '/settings on|off [número] — notificaciones personales',
+      '/settings on|off [número] — solo entrega de notificaciones personales',
+      'Un administrador actual cambia los ajustes del grupo con /settings dentro de ese grupo.',
       '/privacy — cómo se tratan los datos; eliminación: /privacy delete en el grupo por un administrador actual',
       '',
       'Reenvía un mensaje con una promesa y te ofreceré una tarjeta para confirmar.',
@@ -613,6 +667,7 @@ const catalog: Record<Locale, Strings> = {
     statusOn: 'activadas',
     statusOff: 'desactivadas',
     settingsNotifUsage: 'Usa: /settings on|off [número]',
+    settingsNotifScope: 'Esto cambia solo tu entrega de notificaciones personales. Un administrador actual debe enviar /settings en ese grupo para cambiar el modo, idioma, zona horaria u hora del resumen.',
     settingsChoose: 'Elige un grupo: /settings on|off <número>',
     settingsUpdated: (title, enabled) => `Notificaciones personales para «${title}» ${enabled ? 'activadas' : 'desactivadas'}.`,
     settingsLanguageSaved: (value) => `Idioma de Keepword: ${value}.`,
