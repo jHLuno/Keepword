@@ -5,6 +5,7 @@ export type LogMetadata = Readonly<{
   telegramUserId?: string;
   messageId?: string;
   commitmentId?: string;
+  suggestionId?: string;
   durationMs?: number;
   result?: string;
   errorCode?: string;
@@ -88,6 +89,7 @@ export function serializeLog(event: string, metadata: LogMetadata, level: 'error
     telegram_user_id: metadata.telegramUserId,
     message_id: metadata.messageId,
     commitment_id: metadata.commitmentId,
+    suggestion_id: metadata.suggestionId,
     duration_ms: metadata.durationMs,
     result: metadata.result,
     error_code: metadata.errorCode,
