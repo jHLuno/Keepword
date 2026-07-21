@@ -9,9 +9,6 @@ node_modules
 dist
 coverage
 
-# Standalone marketing site — not part of the bot deploy
-landing
-
 # Next.js / misc build artifacts
 **/.next
 *.log
