@@ -3,6 +3,7 @@
 import { motion } from "framer-motion";
 import { Sparks } from "./Sparks";
 import { Button } from "./ui/Button";
+import { TELEGRAM_URL } from "@/lib/links";
 
 export function Hero() {
   return (
@@ -54,7 +55,7 @@ export function Hero() {
         </p>
 
         <div className="flex flex-wrap justify-center gap-3">
-          <Button href="#cta" variant="solid">
+          <Button href={TELEGRAM_URL} variant="solid">
             Add to chat
           </Button>
           <Button href="#story" variant="outline">
@@ -62,13 +63,9 @@ export function Hero() {
           </Button>
         </div>
 
-        <ul className="mt-8 flex flex-wrap justify-center gap-x-3 gap-y-1 font-display text-[0.6rem] uppercase tracking-[0.2em] text-fg-mute">
-          <li>Startups</li>
-          <li aria-hidden>/</li>
-          <li>Agencies</li>
-          <li aria-hidden>/</li>
-          <li>Project teams</li>
-        </ul>
+        <p className="mt-6 font-display text-[0.6rem] uppercase tracking-[0.2em] text-fg-mute">
+          7 days free · then from $5/mo · cancel anytime
+        </p>
       </motion.div>
 
       <a

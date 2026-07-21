@@ -4,12 +4,13 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Logo } from "./Logo";
 import { Button } from "./ui/Button";
+import { TELEGRAM_URL } from "@/lib/links";
 
 const LINKS = [
   { href: "#about", label: "About" },
   { href: "#benefits", label: "Benefits" },
   { href: "#story", label: "How it works" },
-  { href: "#cta", label: "Start" },
+  { href: "#pricing", label: "Pricing" },
 ];
 
 export function Nav() {
@@ -54,10 +55,10 @@ export function Nav() {
         </nav>
 
         <div className="flex items-center gap-2.5">
-          <Button href="#cta" variant="ghost" size="sm" className="hidden sm:inline-flex">
+          <Button href={TELEGRAM_URL} variant="ghost" size="sm" className="hidden sm:inline-flex">
             Talk to us
           </Button>
-          <Button href="#cta" variant="solid" size="sm">
+          <Button href={TELEGRAM_URL} variant="solid" size="sm">
             Add to chat
           </Button>
         </div>

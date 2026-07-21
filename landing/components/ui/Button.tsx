@@ -33,10 +33,12 @@ export function Button({
   size?: Size;
   className?: string;
 }) {
+  const external = /^https?:\/\//.test(href);
   return (
     <Link
       href={href}
       className={`${base} ${variants[variant]} ${sizes[size]} ${className}`}
+      {...(external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
     >
       {children}
     </Link>

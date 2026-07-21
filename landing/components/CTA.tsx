@@ -3,6 +3,7 @@
 import { Reveal } from "./Reveal";
 import { Sparks } from "./Sparks";
 import { Button } from "./ui/Button";
+import { TELEGRAM_URL } from "@/lib/links";
 
 export function CTA() {
   return (
@@ -26,23 +27,23 @@ export function CTA() {
         </Reveal>
         <Reveal>
           <p className="mx-auto mb-9 max-w-[56ch] text-[clamp(0.98rem,1.4vw,1.15rem)] leading-relaxed text-fg-dim">
-            Add Keepword to a work group in a minute. It only reads new messages
-            and never creates a task without confirmation.
+            Add Keepword to a work group in a minute. Free for 7 days — it only
+            reads new messages and never creates a task without confirmation.
           </p>
         </Reveal>
         <Reveal>
           <div className="flex flex-wrap justify-center gap-3">
-            <Button href="#" variant="solid">
-              Add to chat
+            <Button href={TELEGRAM_URL} variant="solid">
+              Start 7 days free
             </Button>
-            <Button href="#story" variant="outline">
-              See the scenario
+            <Button href="#pricing" variant="outline">
+              See pricing
             </Button>
           </div>
         </Reveal>
         <Reveal>
           <p className="mt-7 font-display text-[0.6rem] uppercase tracking-[0.2em] text-fg-mute">
-            Free for early teams / Works right inside Telegram
+            Then $5/mo up to 5 people · $15/mo for bigger teams · cancel anytime
           </p>
         </Reveal>
       </div>
